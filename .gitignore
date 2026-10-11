@@ -1,0 +1,6 @@
+mealime-export/
+json/
+urls.txt
+failed.txt
+*.shortcut
+.DS_Store
