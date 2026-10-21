@@ -1,6 +1,6 @@
 # Mealime export
 
-Mealime is shutting down. This saves your recipes as markdown (ingredients, steps, cookware, nutrition) plus the raw JSON.
+Mealime is shutting down. This saves your recipes as markdown (ingredients, steps, cookware, nutrition) plus the raw JSON and the main photo.
 
 1. Save recipe share URLs to `iCloud Drive/mealime/urls.txt`, one per line, using a share-sheet shortcut ([build it yourself](SHORTCUT.md), two actions).
 2. Run `mealime_export.py` on that file.
