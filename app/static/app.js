@@ -62,7 +62,7 @@ async function copyGrocery() {
   const g = await (await fetch(`/api/grocery?ids=${state.plan.join(",")}`)).json();
   const text = g.order.map((c) => {
     const items = g.items.filter((i) => i.category === c && !state.checked[i.key]);
-    return items.length ? `${c}\n${items.map((i) => `  ${i.lines.length ? i.lines.join(" + ") + " " : ""}${i.name}`).join("\n")}` : "";
+    return items.length ? `${c}\n${items.map((i) => `  ${i.lines.length ? i.lines.join(" + ") + " " : ""}${i.name}${i.approx?.length ? ` (about ${i.approx.join(" + ")})` : ""}`).join("\n")}` : "";
   }).filter(Boolean).join("\n\n");
   try { await navigator.clipboard.writeText(text); flash("Copied"); } catch (e) { flash("Copy failed"); }
 }
@@ -108,6 +108,7 @@ function recipeHTML(r) {
         <ul class="ingredients">${buy.map(li).join("")}</ul>
         ${pantry.length ? `<h3>Pantry</h3><ul class="ingredients pantry">${pantry.map(li).join("")}</ul>` : ""}
         ${r.cookwares.length ? `<h2>Cookware</h2><ul class="chips">${r.cookwares.map((c) => `<li>${esc(c.name)}</li>`).join("")}</ul>` : ""}
+        ${nutritionHTML(r.nutrition)}
       </aside>
       <section>
         <h2>Steps</h2>
@@ -119,6 +120,17 @@ function recipeHTML(r) {
       </section>
     </div>
   </article>`;
+}
+
+const NUTRIENTS = [["energy", "Calories", "", 0], ["protein", "Protein", "g", 0], ["carbs", "Carbs", "g", 0],
+  ["fiber", "Fiber", "g", 0], ["sugars", "Sugars", "g", 0], ["fat", "Fat", "g", 0], ["saturated", "Saturated", "g", 0],
+  ["cholesterol", "Cholesterol", "mg", 0], ["sodium", "Sodium", "mg", 0], ["potassium", "Potassium", "mg", 0],
+  ["calcium", "Calcium", "mg", 0], ["iron", "Iron", "mg", 1]];
+function nutritionHTML(n) {
+  if (!n) return "";
+  return `<details class="nutrition"><summary>Nutrition per serving</summary><dl>${NUTRIENTS
+    .filter(([k]) => n[k] != null)
+    .map(([k, label, unit, dp]) => `<div><dt>${label}</dt><dd>${(+n[k]).toFixed(dp)}${unit}</dd></div>`).join("")}</dl></details>`;
 }
 
 async function renderPlan(activeId) {
@@ -153,7 +165,7 @@ function groceryHTML(g) {
       <ul>${g.items.filter((i) => i.category === c).map((i) => `
         <li data-key="${esc(i.key)}" class="${state.checked[i.key] ? "done" : ""}">
           <label><input type="checkbox" ${state.checked[i.key] ? "checked" : ""} onchange="toggleChecked(${esc(JSON.stringify(i.key))})">
-            <span>${i.lines.length ? `<b>${esc(i.lines.join(" + "))}</b> ` : ""}${esc(i.name)}</span></label>
+            <span>${i.lines.length ? `<b>${esc(i.lines.join(" + "))}</b> ` : ""}${esc(i.name)}${i.approx?.length ? ` <i>≈ ${esc(i.approx.join(" + "))}</i>` : ""}</span></label>
           ${i.pantry ? "" : `<select class="cat" aria-label="Category" onchange="setCategory(${esc(JSON.stringify(i.key))}, this.value)">${opts(i.category)}</select>`}
           <details><summary>${i.sources.length} ${i.sources.length === 1 ? "recipe" : "recipes"}</summary>
             <ul>${i.sources.map((s) => `<li>${esc(s.text)} <span>· ${esc(s.recipe)}</span></li>`).join("")}</ul></details>

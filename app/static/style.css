@@ -185,3 +185,12 @@ body:has(#tray:not([hidden])) main { padding-bottom: 5rem; }
 .grocery details ul { list-style: none; padding: .3rem 0 0 2rem; margin: 0; }
 .grocery details span { opacity: .7; }
 .copy { margin-left: 0; font: inherit; font-weight: 600; font-size: .95rem; border: 0; cursor: pointer; }
+
+/* nutrition */
+.nutrition { margin-top: 1.5rem; }
+.nutrition summary { font-size: 1.15rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); cursor: pointer; font-weight: 700; }
+.nutrition dl { display: grid; grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr)); gap: .5rem .75rem; margin: .75rem 0 0; }
+.nutrition div { padding: .4rem .6rem; background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
+.nutrition dt { font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.nutrition dd { margin: 0; font-weight: 600; }
+.grocery i { font-style: normal; color: var(--muted); font-size: .9rem; }

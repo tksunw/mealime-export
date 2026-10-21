@@ -12,7 +12,7 @@ from fractions import Fraction
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from ingredients import UNITS, Q, fmt_amount, normalize_name, parse_quantity  # noqa: E402
+from ingredients import UNITS, fmt_amount, normalize_name, parse_line, parse_quantity  # noqa: E402
 
 PLURAL = {"cup", "clove", "bunch", "small bunch", "head", "medium head", "crown", "stick",
           "slice", "piece", "pint", "pkg", "can"}
@@ -32,6 +32,7 @@ def merge(recipes, categories, overrides=None):
     Returns {"order": [...cats..., "Pantry"], "items": [...]} with items sorted by category order then name.
     """
     overrides = overrides or {}
+    step_groups = {}  # key -> {family: {"base", "units"}} summed from per-step lines, for pantry totals
     items = {}  # key -> {name, category, groups: {family: {"base": Fraction, "unit": str, "factor": Fraction}}, sources, pantry_sources}
     for r in recipes:
         for li in r["line_items"]:
@@ -48,19 +49,33 @@ def merge(recipes, categories, overrides=None):
             g = it["groups"].setdefault(q.family, {"base": Fraction(0), "units": set()})
             g["base"] += q.base()
             g["units"].add(q.unit)
+        for st in r.get("instructions", []):
+            for line in (st.get("secondary_message") or "").splitlines():
+                q, name = parse_line(line)
+                if q is None or not name:
+                    continue
+                g = step_groups.setdefault(normalize_name(name), {}).setdefault(q.family, {"base": Fraction(0), "units": set()})
+                g["base"] += q.base()
+                g["units"].add(q.unit)
 
-    out = []
-    for it in items.values():
+    def fmt_groups(groups):
         lines = []
-        for g in it["groups"].values():
+        for g in groups.values():
             # largest unit seen in this family that still gives an amount >= 1, else the smallest seen
             units = sorted(g["units"], key=lambda u: UNITS.get(u, ("", Fraction(1)))[1], reverse=True)
             unit = next((u for u in units if g["base"] / UNITS.get(u, ("", Fraction(1)))[1] >= 1), units[-1])
             lines.append(fmt_q(g["base"] / UNITS.get(unit, ("", Fraction(1)))[1], unit))
+        return lines
+
+    out = []
+    for it in items.values():
+        lines = fmt_groups(it["groups"])
         out.append({
             "key": it["key"], "name": it["name"], "lines": lines,
             "pantry": not lines,
             "category": "Pantry" if not lines else it["category"],
+            # pantry staples have no list quantity; the per-step lines give a rough total
+            "approx": fmt_groups(step_groups.get(it["key"], {})) if not lines else [],
             "sources": it["sources"] or [{"recipe": n, "text": it["name"]} for n in Counter(it["pantry_sources"])],
         })
     order = [c for c in categories["order"] if c != "Pantry"] + ["Other", "Pantry"]
@@ -75,7 +90,8 @@ def _selfcheck(export_dir):
         {"quantity": "1 lb", "ingredient_name": "chicken breasts, boneless skinless"},
         {"quantity": "2 tbsp", "ingredient_name": "soy sauce"},
         {"quantity": "2 cloves", "ingredient_name": "garlic"},
-        {"quantity": "", "ingredient_name": "salt"}]}
+        {"quantity": "", "ingredient_name": "salt"}],
+        "instructions": [{"secondary_message": "½ tsp salt\n1 lb chicken breasts"}, {"secondary_message": "¼ tsp salt"}]}
     b = {"name": "B", "line_items": [
         {"quantity": "8 oz", "ingredient_name": "chicken breasts"},
         {"quantity": "¼ cup", "ingredient_name": "soy sauce"},
@@ -88,6 +104,8 @@ def _selfcheck(export_dir):
     assert by["soy sauce"]["lines"] == ["6 tbsp"], by["soy sauce"]  # ¼ cup = 4 tbsp; under 1 cup so show tbsp
     assert by["garlic"]["lines"] == ["6 cloves"]
     assert by["salt"]["pantry"] and by["salt"]["category"] == "Pantry" and len(by["salt"]["sources"]) == 2
+    assert by["salt"]["approx"] == ["¾ tsp"], by["salt"]
+    assert by["chicken breast"]["approx"] == []  # only pantry items get step totals
     assert by["yellow onion"]["category"] == "Frozen"
     assert len(by["chicken breast"]["sources"]) == 2
     assert [i["category"] for i in g["items"]] == sorted(
