@@ -20,6 +20,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from grocery import merge  # noqa: E402
+from importer import import_url  # noqa: E402
 from ingredients import normalize_name  # noqa: E402
 
 HERE = Path(__file__).parent
@@ -32,36 +33,44 @@ CATEGORIES = json.loads((HERE / "categories.json").read_text())
 
 
 def load_recipes():
+    """Mealime export (read-only) plus recipes imported from URLs under STATE_DIR/recipes."""
     recipes = {}
-    for f in sorted((EXPORT / "json").glob("*.json")):
-        r = json.loads(f.read_text())
-        img = next((p.name for p in (EXPORT / "images").glob(f.stem + ".*")), None)
-        r["image"] = f"/images/{img}" if img else None
-        for li in r["line_items"]:
-            li["pantry"] = not (li.get("quantity") or "").strip()
-            li["key"] = normalize_name(li["ingredient_name"])
-            li["category"] = CATEGORIES["ingredients"].get(li["key"], "Other")
-        for st in r["instructions"]:
-            st["uses"] = [l.strip() for l in (st.get("secondary_message") or "").splitlines() if l.strip()]
-        recipes[r["id"]] = r
+    for root in (EXPORT, IMPORTED):
+        for f in sorted((root / "json").glob("*.json")):
+            r = json.loads(f.read_text())
+            img = next((p.name for p in (root / "images").glob(f.stem + ".*")), None)
+            r["image"] = f"/images/{img}" if img else None
+            CATEGORIES["ingredients"].update({normalize_name(k): v for k, v in r.pop("_categories", {}).items()})
+            for li in r["line_items"]:
+                li["pantry"] = not (li.get("quantity") or "").strip()
+                li["key"] = normalize_name(li["ingredient_name"])
+                li["category"] = CATEGORIES["ingredients"].get(li["key"], "Other")
+            for st in r["instructions"]:
+                st["uses"] = [l.strip() for l in (st.get("secondary_message") or "").splitlines() if l.strip()]
+            recipes[r["id"]] = r
     return recipes
 
 
-RECIPES = load_recipes()
-INDEX = [
-    {"id": r["id"], "name": r["name"], "slug": r["slug"], "minutes": r.get("cooking_minutes"),
-     "servings": r.get("serving_count"), "image": r["image"]}
-    for r in sorted(RECIPES.values(), key=lambda r: r["name"].lower())
-]
+def rebuild():
+    """(Re)load everything into module globals. Called at start and after an import."""
+    global RECIPES, INDEX, INGREDIENTS
+    RECIPES = load_recipes()
+    INDEX = [
+        {"id": r["id"], "name": r["name"], "slug": r["slug"], "minutes": r.get("cooking_minutes"),
+         "servings": r.get("serving_count"), "image": r["image"]}
+        for r in sorted(RECIPES.values(), key=lambda r: r["name"].lower())
+    ]
+    ing = {}
+    for r in RECIPES.values():
+        for li in r["line_items"]:
+            e = ing.setdefault(li["key"], {"key": li["key"], "name": li["ingredient_name"].split(",")[0].strip(), "recipes": set()})
+            e["recipes"].add(r["id"])
+    INGREDIENTS = sorted(({**e, "recipes": len(e["recipes"])} for e in ing.values()), key=lambda e: e["name"].lower())
 
 
-# every distinct ingredient key with its display name and how many recipes use it, for the library page
-_ing = {}
-for _r in RECIPES.values():
-    for _li in _r["line_items"]:
-        _e = _ing.setdefault(_li["key"], {"key": _li["key"], "name": _li["ingredient_name"].split(",")[0].strip(), "recipes": set()})
-        _e["recipes"].add(_r["id"])
-INGREDIENTS = sorted(({**e, "recipes": len(e["recipes"])} for e in _ing.values()), key=lambda e: e["name"].lower())
+IMPORTED = Path(os.environ.get("STATE_DIR", "state")) / "recipes"
+IMPORT_LOCK = threading.Lock()
+rebuild()
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -90,10 +99,34 @@ class Handler(SimpleHTTPRequestHandler):
             r = RECIPES.get(int(path.rsplit("/", 1)[1])) if path.rsplit("/", 1)[1].isdigit() else None
             return self.send_json(r) if r else self.send_error(HTTPStatus.NOT_FOUND)
         if path.startswith("/images/"):
-            return self.send_file(EXPORT / "images" / Path(path).name, cache=86400 * 30)
+            p = EXPORT / "images" / Path(path).name
+            return self.send_file(p if p.is_file() else IMPORTED / "images" / Path(path).name, cache=86400 * 30)
         if path == "/":
             path = "/index.html"
         return self.send_file(STATIC / Path(path).name)
+
+    def do_POST(self):
+        if self.path.split("?", 1)[0] != "/api/import":
+            return self.send_error(HTTPStatus.NOT_FOUND)
+        try:
+            body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", 0)), 8 * 1024 * 1024)))
+            url = body["url"].strip()
+            html = body.get("html") or None  # optional: page source fetched by the browser/Shortcut
+        except (ValueError, KeyError, AttributeError):
+            return self.send_error(HTTPStatus.BAD_REQUEST)
+        with IMPORT_LOCK:  # ponytail: one import at a time; ids come from the current max
+            rid = max([1000000] + [i for i in RECIPES if i >= 1000000]) + 1
+            try:
+                r = import_url(url, IMPORTED, rid, CATEGORIES["order"], html)
+            except Exception as e:  # network, parse, Claude: all land here with the message
+                body = json.dumps({"error": str(e)}).encode()
+                self.send_response(HTTPStatus.BAD_REQUEST)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                return self.wfile.write(body)
+            rebuild()
+        self.send_json({"id": r["id"], "name": r["name"]})
 
     def do_PUT(self):
         if self.path.split("?", 1)[0] != "/api/state":

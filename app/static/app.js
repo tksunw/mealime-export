@@ -76,13 +76,28 @@ async function copyGrocery() {
   }).filter(Boolean).join("\n\n");
   try { await navigator.clipboard.writeText(text); flash("Copied"); } catch (e) { flash("Copy failed"); }
 }
+async function importUrl(e) {
+  e.preventDefault();
+  const f = e.target, b = f.querySelector("button");
+  b.disabled = true; b.textContent = "Adding…";
+  try {
+    const res = await fetch("/api/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: f.url.value }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    index = null;
+    location.hash = `#/recipe/${data.id}`;
+  } catch (err) {
+    b.textContent = "Failed"; f.querySelector("input").setCustomValidity(err.message); f.reportValidity();
+    setTimeout(() => { b.disabled = false; b.textContent = "Add"; f.querySelector("input").setCustomValidity(""); }, 4000);
+  }
+}
 function flash(msg) {
   const b = view.querySelector(".copy"); if (!b) return;
   const t = b.textContent; b.textContent = msg; setTimeout(() => { b.textContent = t; }, 1500);
 }
 window.togglePlan = togglePlan; window.clearPlan = clearPlan; window.restorePlan = restorePlan;
 window.toggleChecked = toggleChecked; window.setCategory = setCategory; window.copyGrocery = copyGrocery;
-window.setLocation = setLocation; window.addPlace = addPlace; window.toggleByLocation = toggleByLocation;
+window.importUrl = importUrl; window.setLocation = setLocation; window.addPlace = addPlace; window.toggleByLocation = toggleByLocation;
 
 const placeOpts = (cur) => `<option value="">—</option>${state.places.map((p) => `<option ${p === cur ? "selected" : ""}>${esc(p)}</option>`).join("")}`;
 const placeSelect = (key) => `<select class="cat" aria-label="Location" onchange="setLocation(${esc(JSON.stringify(key))}, this.value)">${placeOpts(state.locations[key])}</select>`;
@@ -110,7 +125,10 @@ function renderIndex(list) {
   const q = filter.value.trim().toLowerCase();
   const shown = q ? list.filter((r) => r.name.toLowerCase().includes(q)) : list;
   const full = state.plan.length >= MAX_PLAN;
-  view.innerHTML = `<section class="grid">${shown.map((r) => `
+  view.innerHTML = `<form class="import" onsubmit="importUrl(event)">
+    <input type="url" name="url" placeholder="Paste a recipe URL to add it" required>
+    <button class="btn">Add</button></form>
+  <section class="grid">${shown.map((r) => `
     <div class="card ${inPlan(r.id) ? "picked" : ""}">
       <a href="#/recipe/${r.id}"><img src="${esc(r.image)}" alt="" loading="lazy"></a>
       <button class="pick" onclick="togglePlan(${r.id})" ${!inPlan(r.id) && full ? "disabled" : ""}

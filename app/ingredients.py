@@ -28,8 +28,11 @@ UNITS = {
     "cup": ("volume", Fraction(48)),
     "pint": ("volume", Fraction(96)),
     "ml": ("volume", Fraction(1, 5)),  # kitchen convention, 5 ml = 1 tsp
+    "l": ("volume", Fraction(200)),
     "oz": ("mass", Fraction(1)),
     "lb": ("mass", Fraction(16)),
+    "g": ("mass", Fraction(100, 2835)),  # imported recipes only; Mealime never used metric
+    "kg": ("mass", Fraction(100000, 2835)),
 }
 # count-like units: each is its own family, no conversion
 COUNT_UNITS = ["clove", "medium head", "medium", "small bunch", "bunch", "head", "crown",

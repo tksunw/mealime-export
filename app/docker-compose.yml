@@ -3,7 +3,9 @@
 # *.tainik.net fullchain.pem + privkey.pem pushed by the Ansible cert play into ./certs
 services:
   recipes:
-    build: /path/to/MealimeExtraction/app
+    build:
+      context: /path/to/MealimeExtraction
+      dockerfile: app/Dockerfile
     container_name: recipes
     restart: unless-stopped
     read_only: true
@@ -11,6 +13,7 @@ services:
       - "8443:8443"
     environment:
       CERT_DIR: /certs
+    env_file: .env  # ANTHROPIC_API_KEY=... (chmod 600); without it URL import skips the AI pass
     volumes:
       - /srv/recipes/export:/export:ro
       - ./certs:/certs:ro
