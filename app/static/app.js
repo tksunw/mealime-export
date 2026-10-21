@@ -102,24 +102,33 @@ function recipeHTML(r) {
       <a class="btn" href="#/cook/${r.id}/1">Cook</a>
       <button class="btn ghost" onclick="togglePlan(${r.id})" ${!inPlan(r.id) && state.plan.length >= MAX_PLAN ? "disabled" : ""}>
         ${inPlan(r.id) ? "✓ In plan" : "+ Plan"}</button></p>
-    <div class="cols">
-      <aside>
-        <h2>Ingredients</h2>
-        <ul class="ingredients">${buy.map(li).join("")}</ul>
-        ${pantry.length ? `<h3>Pantry</h3><ul class="ingredients pantry">${pantry.map(li).join("")}</ul>` : ""}
-        ${r.cookwares.length ? `<h2>Cookware</h2><ul class="chips">${r.cookwares.map((c) => `<li>${esc(c.name)}</li>`).join("")}</ul>` : ""}
-        ${nutritionHTML(r.nutrition)}
-      </aside>
-      <section>
-        <h2>Steps</h2>
-        <ol class="steps">${r.instructions.map((s) => `
-          <li>
-            <p>${esc(s.primary_message)}</p>
-            ${s.uses.length ? `<ul class="uses">${s.uses.map((u) => `<li>${esc(u)}</li>`).join("")}</ul>` : ""}
-          </li>`).join("")}</ol>
-      </section>
-    </div>
+    <nav class="tabs rtabs">
+      <a class="active" onclick="showTab(this,'ingredients')">Ingredients</a>
+      <a onclick="showTab(this,'steps')">Steps</a>
+      <a onclick="showTab(this,'nutrition')">Nutrition</a>
+    </nav>
+    <section class="pane" data-pane="ingredients">
+      <div class="cols">
+        <div><h2>Ingredients</h2><ul class="ingredients">${buy.map(li).join("")}</ul></div>
+        ${pantry.length ? `<div><h2>Pantry</h2><ul class="ingredients pantry">${pantry.map(li).join("")}</ul></div>` : ""}
+      </div>
+      ${r.cookwares.length ? `<h2>Cookware</h2><ul class="chips">${r.cookwares.map((c) => `<li>${esc(c.name)}</li>`).join("")}</ul>` : ""}
+    </section>
+    <section class="pane" data-pane="steps" hidden>
+      <ol class="steps">${r.instructions.map((s) => `
+        <li>
+          <p>${esc(s.primary_message)}</p>
+          ${s.uses.length ? `<ul class="uses">${s.uses.map((u) => `<li>${esc(u)}</li>`).join("")}</ul>` : ""}
+        </li>`).join("")}</ol>
+    </section>
+    <section class="pane" data-pane="nutrition" hidden>${nutritionHTML(r.nutrition)}</section>
   </article>`;
+}
+
+function showTab(a, name) {
+  const art = a.closest(".recipe");
+  art.querySelectorAll(".rtabs a").forEach((x) => x.classList.toggle("active", x === a));
+  art.querySelectorAll(".pane").forEach((x) => { x.hidden = x.dataset.pane !== name; });
 }
 
 const NUTRIENTS = [["energy", "Calories", "", 0], ["protein", "Protein", "g", 0], ["carbs", "Carbs", "g", 0],
@@ -128,9 +137,9 @@ const NUTRIENTS = [["energy", "Calories", "", 0], ["protein", "Protein", "g", 0]
   ["calcium", "Calcium", "mg", 0], ["iron", "Iron", "mg", 1]];
 function nutritionHTML(n) {
   if (!n) return "";
-  return `<details class="nutrition"><summary>Nutrition per serving</summary><dl>${NUTRIENTS
+  return `<div class="nutrition"><h2>Per serving</h2><dl>${NUTRIENTS
     .filter(([k]) => n[k] != null)
-    .map(([k, label, unit, dp]) => `<div><dt>${label}</dt><dd>${(+n[k]).toFixed(dp)}${unit}</dd></div>`).join("")}</dl></details>`;
+    .map(([k, label, unit, dp]) => `<div><dt>${label}</dt><dd>${(+n[k]).toFixed(dp)}${unit}</dd></div>`).join("")}</dl></div>`;
 }
 
 async function renderPlan(activeId) {
@@ -206,7 +215,7 @@ function renderCook(r, n) {
   <section class="cook">
     <header>
       <a class="exit" href="#/recipe/${r.id}">Done</a>
-      <span class="progress">${n} / ${steps.length}</span>
+      <span class="progress">Step ${n} of ${steps.length}</span>
       <span class="title">${esc(r.name)}</span>
     </header>
     <div class="step">

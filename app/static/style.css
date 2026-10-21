@@ -65,11 +65,11 @@ main { padding: 1rem max(16px, env(safe-area-inset-left)) 3rem; max-width: 1100p
 .recipe .hero {
   width: 100%; max-height: 420px; object-fit: cover; border-radius: 14px; display: block; margin-bottom: 1rem;
 }
-.cols { display: grid; gap: 2rem; grid-template-columns: 1fr; }
-@media (min-width: 820px) {
-  .cols { grid-template-columns: 320px 1fr; }
-  .cols aside { position: sticky; top: 4rem; align-self: start; }
-}
+.cols { display: grid; gap: 0 2rem; grid-template-columns: 1fr; }
+@media (min-width: 600px) { .cols { grid-template-columns: 1fr 1fr; } }
+.rtabs a { cursor: pointer; }
+.pane[hidden] { display: none; }
+.pane .steps, .pane .nutrition { max-width: 900px; }
 .ingredients { list-style: none; padding: 0; margin: 0; }
 .ingredients li { padding: .35rem 0; border-bottom: 1px solid var(--line); }
 .ingredients b { color: var(--accent); font-weight: 600; }
@@ -110,7 +110,7 @@ body.cooking main { max-width: none; padding: 0; }
 }
 .cook header { display: flex; align-items: center; gap: 1rem; color: var(--muted); font-size: .95rem; }
 .cook .exit { color: var(--accent); font-weight: 600; }
-.cook .progress { font-variant-numeric: tabular-nums; }
+.cook .progress { font-variant-numeric: tabular-nums; white-space: nowrap; padding: .2rem .7rem; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 600; }
 .cook .title { margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cook .step { flex: 1; display: flex; flex-direction: column; justify-content: center; max-width: 900px; margin: 0 auto; width: 100%; }
 .cook .step p { font-size: clamp(1.5rem, 3.5vw, 2.4rem); line-height: 1.35; margin: 0 0 1.5rem; }
@@ -187,8 +187,6 @@ body:has(#tray:not([hidden])) main { padding-bottom: 5rem; }
 .copy { margin-left: 0; font: inherit; font-weight: 600; font-size: .95rem; border: 0; cursor: pointer; }
 
 /* nutrition */
-.nutrition { margin-top: 1.5rem; }
-.nutrition summary { font-size: 1.15rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); cursor: pointer; font-weight: 700; }
 .nutrition dl { display: grid; grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr)); gap: .5rem .75rem; margin: .75rem 0 0; }
 .nutrition div { padding: .4rem .6rem; background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
 .nutrition dt { font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
