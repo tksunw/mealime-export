@@ -95,10 +95,11 @@ def to_markdown(r, source_url, final_url, image=None):
     lines += ["", "## Steps", ""]
     for i, step in enumerate(r.get("instructions", []), 1):
         text = (step.get("primary_message") or "").strip()
-        sec = (step.get("secondary_message") or "").strip()
         lines.append(f"{i}. {text}")
-        if sec:
-            lines.append(f"   - {sec}")
+        # secondary_message is the step's ingredient list, one "qty name" per line
+        for used in (step.get("secondary_message") or "").splitlines():
+            if used.strip():
+                lines.append(f"   - {used.strip()}")
     cw = [c["name"] for c in r.get("cookwares", [])]
     if cw:
         lines += ["", "## Cookware", ""] + [f"- {c}" for c in cw]
