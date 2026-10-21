@@ -55,6 +55,15 @@ INDEX = [
 ]
 
 
+# every distinct ingredient key with its display name and how many recipes use it, for the library page
+_ing = {}
+for _r in RECIPES.values():
+    for _li in _r["line_items"]:
+        _e = _ing.setdefault(_li["key"], {"key": _li["key"], "name": _li["ingredient_name"].split(",")[0].strip(), "recipes": set()})
+        _e["recipes"].add(_r["id"])
+INGREDIENTS = sorted(({**e, "recipes": len(e["recipes"])} for e in _ing.values()), key=lambda e: e["name"].lower())
+
+
 class Handler(SimpleHTTPRequestHandler):
     do_HEAD = lambda self: self.do_GET()  # noqa: E731
 
@@ -69,6 +78,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_bytes(body, "application/json")
         if path == "/api/recipes":
             return self.send_json(INDEX)
+        if path == "/api/ingredients":
+            return self.send_json(INGREDIENTS)
         if path == "/api/grocery":
             ids = [int(x) for x in self.path.partition("ids=")[2].split("&")[0].split(",") if x.isdigit()]
             with STATE_LOCK:

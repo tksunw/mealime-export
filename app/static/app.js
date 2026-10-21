@@ -3,7 +3,8 @@ const view = document.getElementById("view");
 const filter = document.getElementById("filter");
 const MAX_PLAN = 5;
 let index = null;
-let state = { plan: [], history: [], checked: {}, overrides: {} }; // plan: recipe ids; history: [{ids, created}]; checked/overrides keyed by ingredient key
+// plan: recipe ids; history: [{ids, created}]; checked/overrides/locations keyed by ingredient key; places: location names
+let state = { plan: [], history: [], checked: {}, overrides: {}, locations: {}, places: ["Refrigerator", "Freezer", "Pantry", "Spice cabinet", "Counter"], byLocation: false };
 const cache = {};
 
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -58,6 +59,15 @@ async function setCategory(key, cat) {
   await route();
   scrollTo(0, y);
 }
+function setLocation(key, place) {
+  if (place) state.locations[key] = place; else delete state.locations[key];
+  saveState();
+}
+function addPlace(input) {
+  const p = input.value.trim();
+  if (p && !state.places.includes(p)) { state.places.push(p); saveState(); route(); }
+}
+function toggleByLocation() { state.byLocation = !state.byLocation; saveState(); route(); }
 async function copyGrocery() {
   const g = await (await fetch(`/api/grocery?ids=${state.plan.join(",")}`)).json();
   const text = g.order.map((c) => {
@@ -72,6 +82,28 @@ function flash(msg) {
 }
 window.togglePlan = togglePlan; window.clearPlan = clearPlan; window.restorePlan = restorePlan;
 window.toggleChecked = toggleChecked; window.setCategory = setCategory; window.copyGrocery = copyGrocery;
+window.setLocation = setLocation; window.addPlace = addPlace; window.toggleByLocation = toggleByLocation;
+
+const placeOpts = (cur) => `<option value="">—</option>${state.places.map((p) => `<option ${p === cur ? "selected" : ""}>${esc(p)}</option>`).join("")}`;
+const placeSelect = (key) => `<select class="cat" aria-label="Location" onchange="setLocation(${esc(JSON.stringify(key))}, this.value)">${placeOpts(state.locations[key])}</select>`;
+
+async function renderLibrary() {
+  const all = await (await fetch("/api/ingredients")).json();
+  const q = filter.value.trim().toLowerCase();
+  const shown = q ? all.filter((i) => i.name.toLowerCase().includes(q)) : all;
+  const unset = shown.filter((i) => !state.locations[i.key]);
+  const row = (i) => `<li><span>${esc(i.name)} <i>· ${i.recipes}</i></span>${placeSelect(i.key)}</li>`;
+  view.innerHTML = `<section class="library">
+    <h1>Ingredient library</h1>
+    <p class="meta">Where each ingredient lives in the house. ${all.length - unset.length} of ${all.length} set.
+      <input id="newplace" placeholder="New location" onkeydown="if(event.key==='Enter')addPlace(this)"> <button class="btn ghost" onclick="addPlace(document.getElementById('newplace'))">Add</button></p>
+    ${unset.length ? `<h2>Not set</h2><ul class="ingredients">${unset.map(row).join("")}</ul>` : ""}
+    ${state.places.map((p) => {
+      const items = shown.filter((i) => state.locations[i.key] === p);
+      return items.length ? `<h2>${esc(p)}</h2><ul class="ingredients">${items.map(row).join("")}</ul>` : "";
+    }).join("")}
+  </section>`;
+}
 
 // --- views ---
 function renderIndex(list) {
@@ -93,7 +125,7 @@ function renderIndex(list) {
 function recipeHTML(r) {
   const buy = r.line_items.filter((li) => !li.pantry);
   const pantry = r.line_items.filter((li) => li.pantry);
-  const li = (x) => `<li>${x.quantity ? `<b>${esc(x.quantity)}</b> ` : ""}${esc(x.ingredient_name)}</li>`;
+  const li = (x, extra = "") => `<li><span>${x.quantity ? `<b>${esc(x.quantity)}</b> ` : ""}${esc(x.ingredient_name)}</span>${extra}</li>`;
   return `
   <article class="recipe">
     <img class="hero" src="${esc(r.image)}" alt="">
@@ -108,10 +140,11 @@ function recipeHTML(r) {
       <a onclick="showTab(this,'nutrition')">Nutrition</a>
     </nav>
     <section class="pane" data-pane="ingredients">
-      <div class="cols">
-        <div><h2>Ingredients</h2><ul class="ingredients">${buy.map(li).join("")}</ul></div>
-        ${pantry.length ? `<div><h2>Pantry</h2><ul class="ingredients pantry">${pantry.map(li).join("")}</ul></div>` : ""}
-      </div>
+      <p class="meta"><button class="btn ghost" onclick="toggleByLocation()">${state.byLocation ? "By list" : "By location"}</button></p>
+      ${state.byLocation ? byLocationHTML(r.line_items, li) : `<div class="cols">
+        <div><h2>Ingredients</h2><ul class="ingredients">${buy.map((x) => li(x)).join("")}</ul></div>
+        ${pantry.length ? `<div><h2>Pantry</h2><ul class="ingredients pantry">${pantry.map((x) => li(x)).join("")}</ul></div>` : ""}
+      </div>`}
       ${r.cookwares.length ? `<h2>Cookware</h2><ul class="chips">${r.cookwares.map((c) => `<li>${esc(c.name)}</li>`).join("")}</ul>` : ""}
     </section>
     <section class="pane" data-pane="steps" hidden>
@@ -123,6 +156,13 @@ function recipeHTML(r) {
     </section>
     <section class="pane" data-pane="nutrition" hidden>${nutritionHTML(r.nutrition)}</section>
   </article>`;
+}
+
+function byLocationHTML(items, li) {
+  const groups = state.places.map((p) => [p, items.filter((x) => state.locations[x.key] === p)]).filter(([, xs]) => xs.length);
+  const unset = items.filter((x) => !state.locations[x.key]);
+  return `<div class="cols">${groups.map(([p, xs]) => `<div><h2>${esc(p)}</h2><ul class="ingredients">${xs.map((x) => li(x)).join("")}</ul></div>`).join("")}</div>
+    ${unset.length ? `<h2>Location not set</h2><ul class="ingredients unset">${unset.map((x) => li(x, placeSelect(x.key))).join("")}</ul>` : ""}`;
 }
 
 function showTab(a, name) {
@@ -249,9 +289,13 @@ async function route() {
   wakeLock?.release(); wakeLock = null;
   const p = h.match(/^#\/plan(?:\/(\d+|grocery))?/);
   const m = h.match(/^#\/recipe\/(\d+)/);
+  const lib = h.startsWith("#/library");
   filter.hidden = !!(p || m);
   document.title = "Recipes";
-  if (p) {
+  if (lib) {
+    await renderLibrary();
+    document.title = "Ingredient library";
+  } else if (p) {
     await renderPlan(p[1]);
     document.title = "Plan";
   } else if (m) {
@@ -265,6 +309,6 @@ async function route() {
   renderTray();
 }
 
-filter.addEventListener("input", () => getIndex().then(renderIndex));
+filter.addEventListener("input", () => location.hash.startsWith("#/library") ? renderLibrary() : getIndex().then(renderIndex));
 window.addEventListener("hashchange", route);
 loadState().then(route);

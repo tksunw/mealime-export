@@ -89,6 +89,12 @@ Status 2026-10-21: all phases built. Nutrition confirmed per serving; serving sc
 4. Grocery list (one day). Merge, categories, sticky overrides, checkboxes, copy as text.
 5. Optional. Nutrition panel once per-serving vs per-recipe is confirmed. Pantry totals from step lines. Serving scaler is skipped: Mealime recipes are fixed-serving and no verified UX pattern exists for it.
 
+## Wish list (2026-10-21, after v1.0)
+
+6. Ingredient library. `state.locations {key: place}` and `state.places [...]`, page at `#/library` listing every ingredient key (`GET /api/ingredients`) with a location select, unassigned first. Recipe Ingredients tab gets a persisted "By location" toggle that groups bought and pantry items by place, unset ones last with an inline select. Done 2026-10-21.
+7. Grocery list to TickTick. App calls the TickTick Open API (OAuth2 once from the Mac, token file beside state.json), "Send to TickTick" on the grocery tab posts one task per unchecked item into the chosen list. Needs: list name, app registration (client id and secret in the compose `.env`).
+8. Add recipe from URL. Server fetches the page, reads schema.org Recipe JSON-LD (name, image, ingredients, instructions, yield, time, nutrition), then one Claude call (Haiku) assigns ingredients to steps, lists cookware, and picks aisle categories for new names. Saved as Mealime-shaped JSON plus image under `STATE_DIR/recipes/`, loaded alongside the export. Works without the key (no per-step lists). `ANTHROPIC_API_KEY` via `env_file: .env` next to the compose file.
+
 ## Open items
 
 - Confirm whether `nutrition` values are per serving or per recipe before showing them.
