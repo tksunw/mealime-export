@@ -21,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from grocery import merge  # noqa: E402
 from importer import import_url  # noqa: E402
+from ticktick import add_tasks  # noqa: E402
 from ingredients import normalize_name  # noqa: E402
 
 HERE = Path(__file__).parent
@@ -70,6 +71,8 @@ def rebuild():
 
 IMPORTED = Path(os.environ.get("STATE_DIR", "state")) / "recipes"
 IMPORT_LOCK = threading.Lock()
+TICKTICK_TOKEN = Path(os.environ.get("STATE_DIR", "state")) / "ticktick.json"
+TICKTICK_LIST = os.environ.get("TICKTICK_LIST", "Grocery")
 rebuild()
 
 
@@ -106,7 +109,10 @@ class Handler(SimpleHTTPRequestHandler):
         return self.send_file(STATIC / Path(path).name)
 
     def do_POST(self):
-        if self.path.split("?", 1)[0] != "/api/import":
+        path = self.path.split("?", 1)[0]
+        if path == "/api/ticktick":
+            return self.ticktick()
+        if path != "/api/import":
             return self.send_error(HTTPStatus.NOT_FOUND)
         try:
             body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", 0)), 8 * 1024 * 1024)))
@@ -127,6 +133,27 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.wfile.write(body)
             rebuild()
         self.send_json({"id": r["id"], "name": r["name"]})
+
+    def ticktick(self):
+        """Body: {"items": [{"title", "content"}]} from the grocery tab. Needs STATE_DIR/ticktick.json."""
+        try:
+            items = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", 0)), STATE_MAX)))["items"]
+            assert isinstance(items, list) and all(isinstance(i.get("title"), str) for i in items)
+        except (ValueError, KeyError, AssertionError, AttributeError):
+            return self.send_error(HTTPStatus.BAD_REQUEST)
+        try:
+            token = json.loads(TICKTICK_TOKEN.read_text())["access_token"] if TICKTICK_TOKEN.is_file() else None
+            if not token:
+                raise ValueError("TickTick not connected: run app/ticktick.py auth and copy the token to the state dir")
+            n = add_tasks(token, TICKTICK_LIST, items[:200])
+        except Exception as e:
+            body = json.dumps({"error": str(e)}).encode()
+            self.send_response(HTTPStatus.BAD_REQUEST)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            return self.wfile.write(body)
+        self.send_json({"sent": n, "list": TICKTICK_LIST})
 
     def do_PUT(self):
         if self.path.split("?", 1)[0] != "/api/state":

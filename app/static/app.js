@@ -68,13 +68,24 @@ function addPlace(input) {
   if (p && !state.places.includes(p)) { state.places.push(p); saveState(); route(); }
 }
 function toggleByLocation() { state.byLocation = !state.byLocation; saveState(); route(); }
-async function copyGrocery() {
+const groceryTitle = (i) => `${i.lines.length ? i.lines.join(" + ") + " " : ""}${i.name}${i.approx?.length ? ` (about ${i.approx.join(" + ")})` : ""}`;
+async function groceryUnchecked() {
   const g = await (await fetch(`/api/grocery?ids=${state.plan.join(",")}`)).json();
-  const text = g.order.map((c) => {
-    const items = g.items.filter((i) => i.category === c && !state.checked[i.key]);
-    return items.length ? `${c}\n${items.map((i) => `  ${i.lines.length ? i.lines.join(" + ") + " " : ""}${i.name}${i.approx?.length ? ` (about ${i.approx.join(" + ")})` : ""}`).join("\n")}` : "";
-  }).filter(Boolean).join("\n\n");
+  return g.order.map((c) => [c, g.items.filter((i) => i.category === c && !state.checked[i.key])]).filter(([, xs]) => xs.length);
+}
+async function copyGrocery() {
+  const text = (await groceryUnchecked()).map(([c, items]) => `${c}\n${items.map((i) => "  " + groceryTitle(i)).join("\n")}`).join("\n\n");
   try { await navigator.clipboard.writeText(text); flash("Copied"); } catch (e) { flash("Copy failed"); }
+}
+async function sendTickTick(btn) {
+  btn.disabled = true; btn.textContent = "Sending…";
+  const items = (await groceryUnchecked()).flatMap(([c, xs]) => xs.map((i) => ({ title: groceryTitle(i), content: `${c} · ${i.sources.map((s) => s.recipe).join(", ")}` })));
+  try {
+    const res = await fetch("/api/ticktick", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }) });
+    const data = await res.json();
+    btn.textContent = res.ok ? `Sent ${data.sent} to ${data.list}` : "Failed: " + data.error;
+  } catch (e) { btn.textContent = "Failed"; }
+  setTimeout(() => { btn.disabled = false; btn.textContent = "Send to TickTick"; }, 5000);
 }
 async function importUrl(e) {
   e.preventDefault();
@@ -97,7 +108,7 @@ function flash(msg) {
 }
 window.togglePlan = togglePlan; window.clearPlan = clearPlan; window.restorePlan = restorePlan;
 window.toggleChecked = toggleChecked; window.setCategory = setCategory; window.copyGrocery = copyGrocery;
-window.importUrl = importUrl; window.setLocation = setLocation; window.addPlace = addPlace; window.toggleByLocation = toggleByLocation;
+window.importUrl = importUrl; window.sendTickTick = sendTickTick; window.setLocation = setLocation; window.addPlace = addPlace; window.toggleByLocation = toggleByLocation;
 
 const placeOpts = (cur) => `<option value="">—</option>${state.places.map((p) => `<option ${p === cur ? "selected" : ""}>${esc(p)}</option>`).join("")}`;
 const placeSelect = (key) => `<select class="cat" aria-label="Location" onchange="setLocation(${esc(JSON.stringify(key))}, this.value)">${placeOpts(state.locations[key])}</select>`;
@@ -226,7 +237,8 @@ function groceryHTML(g) {
   const cats = g.order.filter((c) => g.items.some((i) => i.category === c));
   const opts = (cur) => g.order.filter((c) => c !== "Pantry").map((c) => `<option ${c === cur ? "selected" : ""}>${esc(c)}</option>`).join("");
   return `<section class="grocery">
-    <p class="meta"><button class="btn copy" onclick="copyGrocery()">Copy as text</button></p>
+    <p class="meta"><button class="btn copy" onclick="copyGrocery()">Copy as text</button>
+      <button class="btn copy ghost" onclick="sendTickTick(this)">Send to TickTick</button></p>
     ${cats.map((c) => `
       <h2>${c === "Pantry" ? "Pantry · check you have" : esc(c)}</h2>
       <ul>${g.items.filter((i) => i.category === c).map((i) => `
