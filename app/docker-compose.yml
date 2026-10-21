@@ -1,0 +1,16 @@
+# eyeball (Debian 12): /etc/docker/containers/recipes/docker-compose.yml
+# Needs: Docker on eyeball, export dir copied to /srv/recipes/export,
+# *.tainik.net fullchain.pem + privkey.pem pushed by the Ansible cert play into ./certs
+services:
+  recipes:
+    build: /path/to/MealimeExtraction/app
+    container_name: recipes
+    restart: unless-stopped
+    read_only: true
+    ports:
+      - "8443:8443"
+    environment:
+      CERT_DIR: /certs
+    volumes:
+      - /srv/recipes/export:/export:ro
+      - ./certs:/certs:ro

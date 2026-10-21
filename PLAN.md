@@ -1,6 +1,6 @@
 # Recipe web app plan
 
-Self-hosted replacement for the Mealime viewing experience, built on the 74 exported recipes (JSON + JPEG). Single Docker container on Tank, used from an iPad or phone in the kitchen.
+Self-hosted replacement for the Mealime viewing experience, built on the 74 exported recipes (JSON + JPEG). Single Docker container on eyeball (decided 2026-10-21; Tank was the first draft), used from an iPad or phone in the kitchen.
 
 ## What the data actually contains
 
@@ -63,7 +63,7 @@ Pantry items (empty quantity): list once, no merge needed. Optional later: sum t
 
 ### TLS and hostname
 
-Wake lock and service worker need HTTPS. Tank already receives the `*.tainik.net` wildcard from certbot on chaos via Ansible. Mount `fullchain.pem` and `privkey.pem` read-only into the container and wrap the stdlib server with `ssl.SSLContext`. Add `recipes.tainik.net` to local DNS pointing at Tank. No reverse proxy needed; add the Ansible host to the cert distribution play.
+Wake lock and service worker need HTTPS. certbot on chaos holds the `*.tainik.net` wildcard and Ansible pushes it to hosts; add eyeball to that play if it is not already there. Mount `fullchain.pem` and `privkey.pem` read-only into the container and wrap the stdlib server with `ssl.SSLContext`. Add `recipes.tainik.net` to local DNS pointing at eyeball (192.168.0.222). No reverse proxy needed.
 
 ### Docker
 
@@ -76,7 +76,7 @@ EXPOSE 8443
 CMD ["python", "server.py"]
 ```
 
-Compose at `/etc/docker/containers/recipes/docker-compose.yml`, matching the existing Tank layout: three bind mounts (export read-only, state read-write, certs read-only), `read_only: true`, `restart: unless-stopped`, port 8443.
+Compose at `/etc/docker/containers/recipes/docker-compose.yml` on eyeball (same layout Tank uses); confirm Docker is installed there first. Mounts: three bind mounts (export read-only, state read-write, certs read-only), `read_only: true`, `restart: unless-stopped`, port 8443.
 
 ## Phases
 

@@ -3,12 +3,14 @@
 
     EXPORT_DIR=/path/to/export python3 app/server.py
 
-Env: EXPORT_DIR (has json/ and images/), PORT (default 8080).
+Env: EXPORT_DIR (has json/ and images/), PORT (default 8080),
+CERT_DIR (optional; if it holds fullchain.pem and privkey.pem, serves HTTPS).
 Loads every json/*.json at startup; restart to pick up new recipes.
 """
 import json
 import mimetypes
 import os
+import ssl
 import sys
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -90,8 +92,15 @@ class Handler(SimpleHTTPRequestHandler):
 
 def main():
     port = int(os.environ.get("PORT", 8080))
-    print(f"{len(RECIPES)} recipes from {EXPORT}, http://0.0.0.0:{port}", file=sys.stderr)
-    ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
+    srv = ThreadingHTTPServer(("0.0.0.0", port), Handler)
+    cert = Path(os.environ.get("CERT_DIR", "")) if os.environ.get("CERT_DIR") else None
+    if cert and (cert / "fullchain.pem").is_file():
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(cert / "fullchain.pem", cert / "privkey.pem")
+        srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
+    scheme = "https" if cert and (cert / "fullchain.pem").is_file() else "http"
+    print(f"{len(RECIPES)} recipes from {EXPORT}, {scheme}://0.0.0.0:{port}", file=sys.stderr)
+    srv.serve_forever()
 
 
 if __name__ == "__main__":
