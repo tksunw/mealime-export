@@ -80,6 +80,8 @@ Compose at `/etc/docker/containers/recipes/docker-compose.yml` on eyeball (same 
 
 ## Phases
 
+Status 2026-10-21: phases 0 to 4 built and committed; 5 not started.
+
 0. Parser and tables (half a day). `parse_quantity()` with a test that runs it over all 982 lines and asserts zero unparsed. Write `categories.json`. Fix the markdown exporter so `secondary_message` renders as "uses:" lines, not a tip.
 1. Recipe display (one day). Server with static files and the recipe routes. Index grid, recipe page with per-step ingredients, cookware, pantry group. This alone replaces most of what was lost.
 2. Cook mode and PWA (half a day). Single-step view, wake lock, manifest, service worker, TLS, DNS. Install on the kitchen iPad.

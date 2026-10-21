@@ -19,7 +19,8 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from ingredients import normalize_name, parse_line  # noqa: E402
+from grocery import merge  # noqa: E402
+from ingredients import normalize_name  # noqa: E402
 
 HERE = Path(__file__).parent
 STATIC = HERE / "static"
@@ -68,6 +69,12 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_bytes(body, "application/json")
         if path == "/api/recipes":
             return self.send_json(INDEX)
+        if path == "/api/grocery":
+            ids = [int(x) for x in self.path.partition("ids=")[2].split("&")[0].split(",") if x.isdigit()]
+            with STATE_LOCK:
+                state = json.loads(STATE.read_text()) if STATE.is_file() else {}
+            rs = [RECIPES[i] for i in ids if i in RECIPES]
+            return self.send_json(merge(rs, CATEGORIES, state.get("overrides")))
         if path.startswith("/api/recipes/"):
             r = RECIPES.get(int(path.rsplit("/", 1)[1])) if path.rsplit("/", 1)[1].isdigit() else None
             return self.send_json(r) if r else self.send_error(HTTPStatus.NOT_FOUND)

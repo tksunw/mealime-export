@@ -119,6 +119,7 @@ def normalize_name(name: str) -> str:
 def fmt_amount(x: Fraction) -> str:
     whole, frac = divmod(x, 1)
     inv = {v: k for k, v in VULGAR.items()}
+    inv.update({"3/8": "⅜", "5/8": "⅝", "7/8": "⅞", "1/6": "⅙", "5/6": "⅚"})
     f = inv.get(str(frac), str(frac) if frac else "")
     return f"{int(whole) if whole else ''}{' ' if whole and f else ''}{f}".strip() or "0"
 

@@ -3,7 +3,7 @@ const view = document.getElementById("view");
 const filter = document.getElementById("filter");
 const MAX_PLAN = 5;
 let index = null;
-let state = { plan: [], history: [] }; // plan: recipe ids; history: [{ids, created}]
+let state = { plan: [], history: [], checked: {}, overrides: {} }; // plan: recipe ids; history: [{ids, created}]; checked/overrides keyed by ingredient key
 const cache = {};
 
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -20,7 +20,7 @@ async function loadState() {
   try { state = { ...state, ...(await (await fetch("/api/state")).json()) }; } catch (e) { /* offline: keep defaults */ }
 }
 function saveState() {
-  fetch("/api/state", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(state) });
+  return fetch("/api/state", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(state) });
 }
 
 // --- plan mutations ---
@@ -36,6 +36,7 @@ function clearPlan() {
   if (state.plan.length) {
     state.history = [{ ids: state.plan, created: new Date().toISOString() }, ...state.history].slice(0, 10);
     state.plan = [];
+    state.checked = {};
     saveState();
   }
   location.hash = "#/";
@@ -45,7 +46,32 @@ function restorePlan(i) {
   saveState();
   location.hash = "#/plan";
 }
+function toggleChecked(key) {
+  state.checked[key] = !state.checked[key];
+  saveState();
+  view.querySelector(`[data-key="${CSS.escape(key)}"]`)?.classList.toggle("done", state.checked[key]);
+}
+async function setCategory(key, cat) {
+  state.overrides[key] = cat;
+  await saveState(); // grocery is computed server-side from the saved overrides
+  const y = scrollY;
+  await route();
+  scrollTo(0, y);
+}
+async function copyGrocery() {
+  const g = await (await fetch(`/api/grocery?ids=${state.plan.join(",")}`)).json();
+  const text = g.order.map((c) => {
+    const items = g.items.filter((i) => i.category === c && !state.checked[i.key]);
+    return items.length ? `${c}\n${items.map((i) => `  ${i.lines.length ? i.lines.join(" + ") + " " : ""}${i.name}`).join("\n")}` : "";
+  }).filter(Boolean).join("\n\n");
+  try { await navigator.clipboard.writeText(text); flash("Copied"); } catch (e) { flash("Copy failed"); }
+}
+function flash(msg) {
+  const b = view.querySelector(".copy"); if (!b) return;
+  const t = b.textContent; b.textContent = msg; setTimeout(() => { b.textContent = t; }, 1500);
+}
 window.togglePlan = togglePlan; window.clearPlan = clearPlan; window.restorePlan = restorePlan;
+window.toggleChecked = toggleChecked; window.setCategory = setCategory; window.copyGrocery = copyGrocery;
 
 // --- views ---
 function renderIndex(list) {
@@ -103,15 +129,36 @@ async function renderPlan(activeId) {
       ${historyHTML(names)}</section>`;
     return;
   }
-  const active = recipes.find((r) => r.id === +activeId) || recipes[0];
+  const grocery = activeId === "grocery";
+  const active = grocery ? null : recipes.find((r) => r.id === +activeId) || recipes[0];
+  const body = grocery ? groceryHTML(await (await fetch(`/api/grocery?ids=${state.plan.join(",")}`)).json()) : recipeHTML(active);
   view.innerHTML = `
   <nav class="tabs">
     ${recipes.map((r) => `<a class="${r === active ? "active" : ""}" href="#/plan/${r.id}">${esc(r.name)}</a>`).join("")}
+    <a class="grocery-tab ${grocery ? "active" : ""}" href="#/plan/grocery">Grocery</a>
     <button class="clear" onclick="clearPlan()">Clear plan</button>
   </nav>
-  ${recipeHTML(active)}
+  ${body}
   ${historyHTML(names)}`;
   window.scrollTo(0, 0);
+}
+
+function groceryHTML(g) {
+  const cats = g.order.filter((c) => g.items.some((i) => i.category === c));
+  const opts = (cur) => g.order.filter((c) => c !== "Pantry").map((c) => `<option ${c === cur ? "selected" : ""}>${esc(c)}</option>`).join("");
+  return `<section class="grocery">
+    <p class="meta"><button class="btn copy" onclick="copyGrocery()">Copy as text</button></p>
+    ${cats.map((c) => `
+      <h2>${c === "Pantry" ? "Pantry · check you have" : esc(c)}</h2>
+      <ul>${g.items.filter((i) => i.category === c).map((i) => `
+        <li data-key="${esc(i.key)}" class="${state.checked[i.key] ? "done" : ""}">
+          <label><input type="checkbox" ${state.checked[i.key] ? "checked" : ""} onchange="toggleChecked(${esc(JSON.stringify(i.key))})">
+            <span>${i.lines.length ? `<b>${esc(i.lines.join(" + "))}</b> ` : ""}${esc(i.name)}</span></label>
+          ${i.pantry ? "" : `<select class="cat" aria-label="Category" onchange="setCategory(${esc(JSON.stringify(i.key))}, this.value)">${opts(i.category)}</select>`}
+          <details><summary>${i.sources.length} ${i.sources.length === 1 ? "recipe" : "recipes"}</summary>
+            <ul>${i.sources.map((s) => `<li>${esc(s.text)} <span>· ${esc(s.recipe)}</span></li>`).join("")}</ul></details>
+        </li>`).join("")}</ul>`).join("")}
+  </section>`;
 }
 
 function historyHTML(names) {
@@ -179,7 +226,7 @@ async function route() {
   }
   document.body.classList.remove("cooking");
   wakeLock?.release(); wakeLock = null;
-  const p = h.match(/^#\/plan(?:\/(\d+))?/);
+  const p = h.match(/^#\/plan(?:\/(\d+|grocery))?/);
   const m = h.match(/^#\/recipe\/(\d+)/);
   filter.hidden = !!(p || m);
   document.title = "Recipes";

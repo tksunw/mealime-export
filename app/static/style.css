@@ -162,3 +162,26 @@ body:has(#tray:not([hidden])) main { padding-bottom: 5rem; }
 .history li { display: flex; gap: 1rem; align-items: baseline; padding: .4rem 0; border-bottom: 1px solid var(--line); font-size: .95rem; }
 .history button { background: none; border: 1px solid var(--line); border-radius: 6px; color: var(--accent); font: inherit; padding: .2rem .5rem; cursor: pointer; white-space: nowrap; }
 .history span { color: var(--muted); }
+
+/* grocery */
+.tabs .grocery-tab { border-style: dashed; }
+.tabs .grocery-tab.active { border-style: solid; }
+.grocery > ul { list-style: none; padding: 0; margin: 0 0 1rem; }
+.grocery > ul > li {
+  display: grid; grid-template-columns: 1fr auto; gap: .2rem .75rem; align-items: center;
+  padding: .5rem 0; border-bottom: 1px solid var(--line);
+}
+.grocery label { display: flex; gap: .7rem; align-items: baseline; cursor: pointer; }
+.grocery input[type=checkbox] { width: 1.3rem; height: 1.3rem; accent-color: var(--accent); flex: 0 0 auto; }
+.grocery li.done > label span { text-decoration: line-through; color: var(--muted); }
+.grocery b { color: var(--accent); font-weight: 600; }
+.grocery .cat {
+  font: inherit; font-size: .8rem; color: var(--muted); background: transparent;
+  border: 1px solid var(--line); border-radius: 6px; padding: .15rem .3rem; max-width: 9rem;
+}
+.grocery details { grid-column: 1 / -1; font-size: .85rem; color: var(--muted); }
+.grocery summary { cursor: pointer; list-style: none; }
+.grocery summary::-webkit-details-marker { display: none; }
+.grocery details ul { list-style: none; padding: .3rem 0 0 2rem; margin: 0; }
+.grocery details span { opacity: .7; }
+.copy { margin-left: 0; font: inherit; font-weight: 600; font-size: .95rem; border: 0; cursor: pointer; }
