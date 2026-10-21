@@ -4,6 +4,7 @@
     EXPORT_DIR=/path/to/export python3 app/server.py
 
 Env: EXPORT_DIR (has json/ and images/), PORT (default 8080),
+STATE_DIR (writable, holds state.json: plan and history; default ./state),
 CERT_DIR (optional; if it holds fullchain.pem and privkey.pem, serves HTTPS).
 Loads every json/*.json at startup; restart to pick up new recipes.
 """
@@ -12,6 +13,7 @@ import mimetypes
 import os
 import ssl
 import sys
+import threading
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -22,6 +24,9 @@ from ingredients import normalize_name, parse_line  # noqa: E402
 HERE = Path(__file__).parent
 STATIC = HERE / "static"
 EXPORT = Path(os.environ.get("EXPORT_DIR", "mealime-export"))
+STATE = Path(os.environ.get("STATE_DIR", "state")) / "state.json"
+STATE_LOCK = threading.Lock()
+STATE_MAX = 64 * 1024  # plan + history is a few KB; refuse anything silly
 CATEGORIES = json.loads((HERE / "categories.json").read_text())
 
 
@@ -57,6 +62,10 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         path = self.path.split("?", 1)[0]
+        if path == "/api/state":
+            with STATE_LOCK:
+                body = STATE.read_bytes() if STATE.is_file() else b"{}"
+            return self.send_bytes(body, "application/json")
         if path == "/api/recipes":
             return self.send_json(INDEX)
         if path.startswith("/api/recipes/"):
@@ -68,10 +77,31 @@ class Handler(SimpleHTTPRequestHandler):
             path = "/index.html"
         return self.send_file(STATIC / Path(path).name)
 
+    def do_PUT(self):
+        if self.path.split("?", 1)[0] != "/api/state":
+            return self.send_error(HTTPStatus.NOT_FOUND)
+        n = int(self.headers.get("Content-Length", 0))
+        if n > STATE_MAX:
+            return self.send_error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+        try:
+            data = json.loads(self.rfile.read(n))
+            assert isinstance(data, dict)
+        except (ValueError, AssertionError):
+            return self.send_error(HTTPStatus.BAD_REQUEST)
+        with STATE_LOCK:
+            STATE.parent.mkdir(parents=True, exist_ok=True)
+            tmp = STATE.with_suffix(".tmp")
+            tmp.write_text(json.dumps(data))
+            os.replace(tmp, STATE)
+        self.send_response(HTTPStatus.NO_CONTENT)
+        self.end_headers()
+
     def send_json(self, obj):
-        body = json.dumps(obj).encode()
+        self.send_bytes(json.dumps(obj).encode(), "application/json")
+
+    def send_bytes(self, body, ctype):
         self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         if self.command != "HEAD":

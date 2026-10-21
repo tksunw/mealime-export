@@ -14,3 +14,4 @@ services:
     volumes:
       - /srv/recipes/export:/export:ro
       - ./certs:/certs:ro
+      - ./state:/state
