@@ -9,6 +9,7 @@ when sends start failing with 401.
 """
 import base64
 import json
+import re
 import sys
 import urllib.parse
 import urllib.request
@@ -27,9 +28,13 @@ def _call(token, method, path, body=None):
         return json.loads(r.read() or b"null")
 
 
+def _plain(name):  # "🥚Grocery List" -> "grocery list": emoji and case don't count
+    return re.sub(r"[^a-z0-9 ]", "", name.lower()).strip()
+
+
 def project_id(token, name):
     for p in _call(token, "GET", "/project"):
-        if p.get("name", "").lower() == name.lower():
+        if _plain(p.get("name", "")) == _plain(name):
             return p["id"]
     raise ValueError(f"no TickTick list named {name!r}")
 
@@ -69,6 +74,7 @@ def auth(client_id, secret, out):
 
 
 if __name__ == "__main__":
+    assert _plain("🥚Grocery List") == _plain("grocery list") == "grocery list"
     if sys.argv[1:2] == ["auth"] and len(sys.argv) == 5:
         auth(*sys.argv[2:])
     else:
