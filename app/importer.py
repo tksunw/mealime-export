@@ -98,6 +98,7 @@ def split_ingredient(text: str):
         s = re.sub(rf"(?<![\d/]){re.escape(a)}(?![\d/])", b, s)
     s = re.sub(r"^(\d+)?\.(\d+)", lambda m: (m.group(1) or "").lstrip("0") + " " + _DEC.get(m.group(2), "." + m.group(2)) if m.group(2) in _DEC else m.group(0), s).strip()  # "0.25" -> "¼", "1.5" -> "1 ½"
     s = re.sub(r"^(\d+) ?([½¼¾⅓⅔⅛])", r"\1 \2", s)  # "1½" -> "1 ½"
+    s = re.sub(r"\((\d+(?:\.\d+)?)[ -]?(?:ounces?|oz\.?)\)", r"(\1 oz)", s, flags=re.I)  # "(28 ounce) can" -> "(28 oz) can", the parser's package form
     s = re.sub(r"^([\d½¼¾⅓⅔⅛]+(?: [½¼¾⅓⅔⅛])?)\s*(?:-|–|to)\s*[\d½¼¾⅓⅔⅛]+(?: [½¼¾⅓⅔⅛])?", r"\1", s)  # "2-3 cloves", "½ to ⅔ cup" -> low end
     m = re.match(r"^([\d½¼¾⅓⅔⅛][\d½¼¾⅓⅔⅛ ./]*?)\s+([A-Za-z.]+(?: oz\.?)?)(?=\s|$)", s)
     if m:
@@ -238,12 +239,12 @@ def _selfcheck():
     html = """<html><script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebPage"},
     {"@type":["Recipe"],"name":"Test Stir Fry","image":{"@type":"ImageObject","url":"https://x.test/a.jpg"},
     "recipeYield":["4","4 servings"],"totalTime":"PT35M","nutrition":{"@type":"NutritionInformation","calories":"420 kcal","sodiumContent":"0.8 g","proteinContent":"30 g"},
-    "recipeIngredient":["2 tablespoons soy sauce","3 cups (360g) flour","0.25 cup olive oil","1.5 tsp cumin","1/2 to 2/3 cup hot water","1 1/2 pounds chicken thighs, boneless","3 cloves garlic, minced","1&frac12; cups of rice","salt to taste","2-3 green onions","100 g snap peas"],
+    "recipeIngredient":["2 tablespoons soy sauce","1 (28 ounce) can crushed tomatoes","2 (15-oz) cans black beans","3 cups (360g) flour","0.25 cup olive oil","1.5 tsp cumin","1/2 to 2/3 cup hot water","1 1/2 pounds chicken thighs, boneless","3 cloves garlic, minced","1&frac12; cups of rice","salt to taste","2-3 green onions","100 g snap peas"],
     "recipeInstructions":[{"@type":"HowToSection","name":"Prep","itemListElement":[{"@type":"HowToStep","text":"Mince the garlic."}]},{"@type":"HowToStep","text":"Cook the <b>chicken</b>."}]}]}</script></html>"""
     ld = find_recipe(html)
     r = to_mealime(ld, 1000001, "https://x.test/r")
     got = [(li["quantity"], li["ingredient_name"]) for li in r["line_items"]]
-    assert got == [("2 tbsp", "soy sauce"), ("3 cup", "flour"), ("¼ cup", "olive oil"), ("1 ½ tsp", "cumin"), ("½ cup", "hot water"), ("1 ½ lb", "chicken thighs, boneless"), ("3 cloves", "garlic, minced"),
+    assert got == [("2 tbsp", "soy sauce"), ("1 (28 oz) can", "crushed tomatoes"), ("2 (15 oz) cans", "black beans"), ("3 cup", "flour"), ("¼ cup", "olive oil"), ("1 ½ tsp", "cumin"), ("½ cup", "hot water"), ("1 ½ lb", "chicken thighs, boneless"), ("3 cloves", "garlic, minced"),
                    ("1 ½ cup", "rice"), ("", "salt"), ("2", "green onions"), ("100 g", "snap peas")], got
     assert [s["primary_message"] for s in r["instructions"]] == ["Mince the garlic.", "Cook the chicken."]
     assert r["serving_count"] == 4 and r["cooking_minutes"] == 35 and r["presentation_image_url"] == "https://x.test/a.jpg"
