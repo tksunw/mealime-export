@@ -46,14 +46,14 @@ Action 4: **Get Contents of URL** (`is.workflow.actions.downloadurl`)
   - `html` (Text): `HTML text`
 - Rename the output to `Result`.
 
-Action 5: **Show Notification** (`is.workflow.actions.notification`)
+Action 5: **Show Alert** (`is.workflow.actions.alert`)
 
-- Title: `Add recipe`. Body: `Result`.
+- Title: `Add recipe`. Message: `Result`. Show Cancel Button: off.
 - The server replies with the recipe id and name on success, or an `error` message. Both show as-is. Open the app to see the new recipe at the top of the index (sorted by name, so use the filter).
 
 ## Use
 
-On any recipe page in Safari: Share, **Add recipe**. A notification shows the server's reply. Open the app; the new recipe is in the index.
+On any recipe page in Safari: Share, **Add recipe**. An alert shows the server's reply. Open the app; the new recipe is in the index.
 
 With `ANTHROPIC_API_KEY` set on the server the import takes 10 to 30 seconds (one Claude call fills the per-step ingredient lists, cookware and aisles). Without it, a second or two and no per-step lists. Shortcuts gives up on a request after about 60 seconds; if that ever trips, the recipe is still saved and shows on the next index load.
 

@@ -47,8 +47,8 @@ actions = [
             {"WFItemType": 0, "WFKey": tok("html"), "WFValue": tok("", out("HTML text", "text"))},
         ]}}),
     # ponytail: no If branch; the reply is {"id","name"} or {"error"}, shown as-is
-    act("is.workflow.actions.notification", WFNotificationActionTitle="Add recipe",
-        WFNotificationActionBody=tok("", out("Result", "post"))),
+    act("is.workflow.actions.alert", WFAlertActionTitle="Add recipe", WFAlertActionCancelButtonShown=False,
+        WFAlertActionMessage=tok("", out("Result", "post"))),
 ]
 
 shortcut = {
