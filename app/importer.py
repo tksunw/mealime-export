@@ -109,7 +109,7 @@ def split_ingredient(text: str):
     q, rest = parse_line(s)
     if q is None or not rest:
         return "", re.sub(r",?\s*to taste$", "", s, flags=re.I)
-    return s[: len(s) - len(rest)].strip(), rest
+    return s[: len(s) - len(rest)].strip(), re.sub(r"^\([^)]*\)\s*", "", rest)  # "3 cup (360g) flour" -> name "flour"
 
 
 def minutes_of(ld) -> int | None:
@@ -193,7 +193,7 @@ Steps:
 Return JSON only, no prose, shape:
 {{"steps": {{"<step id>": ["<qty> <ingredient>", ...]}}, "cookwares": ["<tool>", ...], "categories": {{"<ingredient name as written>": "<aisle>"}}}}
 
-Rules: "steps" lists the ingredients used in each step with the amount used in that step (split an ingredient across steps if the recipe does; omit steps that use none). Write amounts with unicode fractions and short units (tsp, tbsp, cup, oz, lb). "cookwares" is the kitchen equipment needed (pans, bowls, knife, etc.). "categories" maps every ingredient to one of: {", ".join(aisles)}."""
+Rules: "steps" lists the ingredients used in each step with the amount used in that step (split an ingredient across steps if the recipe does; omit steps that use none). Every ingredient must appear in at least one step; "combine all ingredients" means list all of them there. Write amounts with unicode fractions and short units (tsp, tbsp, cup, oz, lb). "cookwares" is the kitchen equipment needed (pans, bowls, knife, etc.). "categories" maps every ingredient to one of: {", ".join(aisles)}."""
     body = json.dumps({"model": MODEL, "max_tokens": 4000, "messages": [{"role": "user", "content": prompt}]}).encode()
     req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=body, headers={
         "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"})
@@ -238,12 +238,12 @@ def _selfcheck():
     html = """<html><script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebPage"},
     {"@type":["Recipe"],"name":"Test Stir Fry","image":{"@type":"ImageObject","url":"https://x.test/a.jpg"},
     "recipeYield":["4","4 servings"],"totalTime":"PT35M","nutrition":{"@type":"NutritionInformation","calories":"420 kcal","sodiumContent":"0.8 g","proteinContent":"30 g"},
-    "recipeIngredient":["2 tablespoons soy sauce","0.25 cup olive oil","1.5 tsp cumin","1/2 to 2/3 cup hot water","1 1/2 pounds chicken thighs, boneless","3 cloves garlic, minced","1&frac12; cups of rice","salt to taste","2-3 green onions","100 g snap peas"],
+    "recipeIngredient":["2 tablespoons soy sauce","3 cups (360g) flour","0.25 cup olive oil","1.5 tsp cumin","1/2 to 2/3 cup hot water","1 1/2 pounds chicken thighs, boneless","3 cloves garlic, minced","1&frac12; cups of rice","salt to taste","2-3 green onions","100 g snap peas"],
     "recipeInstructions":[{"@type":"HowToSection","name":"Prep","itemListElement":[{"@type":"HowToStep","text":"Mince the garlic."}]},{"@type":"HowToStep","text":"Cook the <b>chicken</b>."}]}]}</script></html>"""
     ld = find_recipe(html)
     r = to_mealime(ld, 1000001, "https://x.test/r")
     got = [(li["quantity"], li["ingredient_name"]) for li in r["line_items"]]
-    assert got == [("2 tbsp", "soy sauce"), ("¼ cup", "olive oil"), ("1 ½ tsp", "cumin"), ("½ cup", "hot water"), ("1 ½ lb", "chicken thighs, boneless"), ("3 cloves", "garlic, minced"),
+    assert got == [("2 tbsp", "soy sauce"), ("3 cup", "flour"), ("¼ cup", "olive oil"), ("1 ½ tsp", "cumin"), ("½ cup", "hot water"), ("1 ½ lb", "chicken thighs, boneless"), ("3 cloves", "garlic, minced"),
                    ("1 ½ cup", "rice"), ("", "salt"), ("2", "green onions"), ("100 g", "snap peas")], got
     assert [s["primary_message"] for s in r["instructions"]] == ["Mince the garlic.", "Cook the chicken."]
     assert r["serving_count"] == 4 and r["cooking_minutes"] == 35 and r["presentation_image_url"] == "https://x.test/a.jpg"
