@@ -13,7 +13,7 @@ services:
       - "8443:8443"
     environment:
       CERT_DIR: /certs
-      TICKTICK_LIST: Grocery  # list name; token from `python3 app/ticktick.py auth` goes to ./state/ticktick.json
+      TICKTICK_LIST: Grocery  # list name; API key goes in ./state/ticktick.json as {"access_token": "..."}
     env_file: .env  # ANTHROPIC_API_KEY=... (chmod 600); without it URL import skips the AI pass
     volumes:
       - /srv/recipes/export:/export:ro
