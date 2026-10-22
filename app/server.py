@@ -125,6 +125,7 @@ class Handler(SimpleHTTPRequestHandler):
             try:
                 r = import_url(url, IMPORTED, rid, CATEGORIES["order"], html)
             except Exception as e:  # network, parse, Claude: all land here with the message
+                print(f"import failed for {url} (html={'yes' if html else 'no'}): {e}", file=sys.stderr)
                 body = json.dumps({"error": str(e)}).encode()
                 self.send_response(HTTPStatus.BAD_REQUEST)
                 self.send_header("Content-Type", "application/json")
