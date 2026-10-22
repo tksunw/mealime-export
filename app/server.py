@@ -20,7 +20,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from grocery import merge  # noqa: E402
-from importer import import_url  # noqa: E402
+from importer import enrich_saved, import_url  # noqa: E402
 from ticktick import add_tasks  # noqa: E402
 from ingredients import normalize_name  # noqa: E402
 
@@ -123,7 +123,7 @@ class Handler(SimpleHTTPRequestHandler):
         with IMPORT_LOCK:  # ponytail: one import at a time; ids come from the current max
             rid = max([1000000] + [i for i in RECIPES if i >= 1000000]) + 1
             try:
-                r = import_url(url, IMPORTED, rid, CATEGORIES["order"], html)
+                r = import_url(url, IMPORTED, rid, html)
             except Exception as e:  # network, parse, Claude: all land here with the message
                 print(f"import failed for {url} (html={'yes' if html else 'no'}): {e}", file=sys.stderr)
                 body = json.dumps({"error": str(e)}).encode()
@@ -134,6 +134,18 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.wfile.write(body)
             rebuild()
         self.send_json({"id": r["id"], "name": r["name"]})
+        threading.Thread(target=self.enrich_later, args=(r,), daemon=True).start()
+
+    @staticmethod
+    def enrich_later(r):
+        """The Claude pass (10 to 30 s) after the reply, then reload so the per-step lines appear."""
+        try:
+            enrich_saved(r, IMPORTED, CATEGORIES["order"])
+        except Exception as e:
+            print(f"enrich failed for {r['name']}: {e}", file=sys.stderr)
+            return
+        with IMPORT_LOCK:
+            rebuild()
 
     def ticktick(self):
         """Body: {"items": [{"title", "content"}]} from the grocery tab. Needs STATE_DIR/ticktick.json."""

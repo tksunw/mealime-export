@@ -209,10 +209,24 @@ Rules: "steps" lists the ingredients used in each step with the amount used in t
     return r
 
 
-def import_url(url: str, dest: Path, rid: int, aisles: list, html: str | None = None) -> dict:
+def _save(r: dict, dest: Path, url: str, image: str | None):
+    stem = f"{r['slug']}-{r['id']}"
+    tmp = dest / "json" / f"{stem}.json.tmp"
+    tmp.write_text(json.dumps(r, indent=1, ensure_ascii=False))
+    os.replace(tmp, dest / "json" / f"{stem}.json")
+    try:
+        from mealime_export import to_markdown
+        (dest / f"{stem}.md").write_text(to_markdown(r, url, url, image).replace("tags: [recipe, mealime]", "tags: [recipe, imported]"))
+    except ImportError:  # ponytail: md is a nicety; the app reads the json
+        pass
+
+
+def import_url(url: str, dest: Path, rid: int, html: str | None = None) -> dict:
     """Fetch (or take the page html from a browser-side fetch, since many recipe sites 403
-    non-browser TLS fingerprints), convert, enrich, save json/image/markdown under dest."""
-    r = enrich(to_mealime(find_recipe(html or fetch(url)), rid, url), aisles)
+    non-browser TLS fingerprints), convert, save json/image/markdown under dest. Fast path,
+    no AI; call enrich_saved() afterwards (the server does it in a background thread so a
+    share-sheet Shortcut gets its reply within its ~30 s budget)."""
+    r = to_mealime(find_recipe(html or fetch(url)), rid, url)
     stem = f"{r['slug']}-{rid}"
     (dest / "json").mkdir(parents=True, exist_ok=True)
     (dest / "images").mkdir(exist_ok=True)
@@ -226,12 +240,15 @@ def import_url(url: str, dest: Path, rid: int, aisles: list, html: str | None = 
             image = f"images/{stem}{ext}"
         except Exception:  # ponytail: no photo is fine
             pass
-    (dest / "json" / f"{stem}.json").write_text(json.dumps(r, indent=1, ensure_ascii=False))
-    try:
-        from mealime_export import to_markdown
-        (dest / f"{stem}.md").write_text(to_markdown(r, url, url, image).replace("tags: [recipe, mealime]", "tags: [recipe, imported]"))
-    except ImportError:  # ponytail: md is a nicety; the app reads the json
-        pass
+    r["_image"] = image
+    _save(r, dest, url, image)
+    return r
+
+
+def enrich_saved(r: dict, dest: Path, aisles: list) -> dict:
+    """Claude pass on an already saved recipe; rewrites its json and md."""
+    r = enrich(r, aisles)
+    _save(r, dest, r.get("source_url", ""), r.get("_image"))
     return r
 
 
@@ -256,7 +273,7 @@ def _selfcheck():
 if __name__ == "__main__":
     if len(sys.argv) > 2:
         cats = json.loads((Path(__file__).parent / "categories.json").read_text())["order"]
-        r = import_url(sys.argv[1], Path(sys.argv[2]), 1000001, cats)
+        r = enrich_saved(import_url(sys.argv[1], Path(sys.argv[2]), 1000001), Path(sys.argv[2]), cats)
         print(json.dumps(r, indent=1, ensure_ascii=False)[:3000])
     else:
         _selfcheck()

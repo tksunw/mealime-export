@@ -97,6 +97,7 @@ async function importUrl(e) {
     if (!res.ok) throw new Error(data.error || res.statusText);
     index = null;
     location.hash = `#/recipe/${data.id}`;
+    setTimeout(() => { delete cache[data.id]; if (location.hash === `#/recipe/${data.id}`) route(); }, 45000); // ponytail: per-step lines arrive from the AI pass later; one refetch instead of polling
   } catch (err) {
     b.textContent = "Failed"; f.querySelector("input").setCustomValidity(err.message); f.reportValidity();
     setTimeout(() => { b.disabled = false; b.textContent = "Add"; f.querySelector("input").setCustomValidity(""); }, 4000);
