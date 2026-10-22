@@ -4,3 +4,5 @@ urls.txt
 failed.txt
 *.shortcut
 .DS_Store
+ticktick.json
+.env
