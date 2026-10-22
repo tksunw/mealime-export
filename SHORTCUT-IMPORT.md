@@ -2,7 +2,14 @@
 
 Share a recipe page from Safari and it lands in the recipe app. Needed because most big recipe sites (Allrecipes, Serious Eats, Simply Recipes, Budget Bytes) return 403 to anything that is not a real browser, so the server cannot fetch them itself. The Shortcut fetches the page with iOS networking and hands the HTML to `POST /api/import`.
 
-Six actions, about five minutes. Built by hand for the same reason as `SHORTCUT.md`: no binary to trust. Action identifiers are given so the steps are unambiguous.
+Two ways to get it. Easiest: generate and sign it on a Mac, then open the file on the iPad from Files (it imports into Shortcuts):
+
+```
+python3 shortcut/build_import_shortcut.py unsigned.shortcut
+shortcuts sign --mode anyone --input unsigned.shortcut --output "Add recipe.shortcut"
+```
+
+The builder is plain Python writing the plist, so it is reviewable and contains no iCloud ids. The hand-build steps below describe the same eleven-action shortcut; the Shortcuts editor changes between releases, so action names may differ a little from what is written here. Action identifiers are given so the steps are unambiguous.
 
 ## Steps
 
