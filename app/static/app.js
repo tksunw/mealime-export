@@ -79,7 +79,7 @@ async function copyGrocery() {
 }
 async function sendTickTick(btn) {
   btn.disabled = true; btn.textContent = "Sending…";
-  const items = (await groceryUnchecked()).flatMap(([c, xs]) => xs.map((i) => ({ title: groceryTitle(i), content: `${c} · ${i.sources.map((s) => s.recipe).join(", ")}` })));
+  const items = (await groceryUnchecked()).flatMap(([c, xs]) => xs.map((i) => ({ title: groceryTitle(i), content: `${c} · ${i.sources.map((s) => s.recipe).join(", ")}`, category: c })));
   try {
     const res = await fetch("/api/ticktick", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }) });
     const data = await res.json();

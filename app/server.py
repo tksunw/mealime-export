@@ -142,10 +142,10 @@ class Handler(SimpleHTTPRequestHandler):
         except (ValueError, KeyError, AssertionError, AttributeError):
             return self.send_error(HTTPStatus.BAD_REQUEST)
         try:
-            token = json.loads(TICKTICK_TOKEN.read_text())["access_token"] if TICKTICK_TOKEN.is_file() else None
-            if not token:
-                raise ValueError("TickTick not connected: run app/ticktick.py auth and copy the token to the state dir")
-            n = add_tasks(token, TICKTICK_LIST, items[:200])
+            tok = json.loads(TICKTICK_TOKEN.read_text()) if TICKTICK_TOKEN.is_file() else {}
+            if not tok.get("access_token"):
+                raise ValueError("TickTick not connected: put the key in STATE_DIR/ticktick.json as access_token")
+            n = add_tasks(tok["access_token"], TICKTICK_LIST, items[:200], tok.get("columns"))
         except Exception as e:
             body = json.dumps({"error": str(e)}).encode()
             self.send_response(HTTPStatus.BAD_REQUEST)

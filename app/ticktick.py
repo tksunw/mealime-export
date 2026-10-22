@@ -39,11 +39,23 @@ def project_id(token, name):
     raise ValueError(f"no TickTick list named {name!r}")
 
 
-def add_tasks(token, list_name, items):
-    """items: [{"title": "6 tbsp soy sauce", "content": "Condiments · 2 recipes"}]. Returns count."""
+# app aisle -> TickTick column (section) name; override with a "columns" dict in the token file
+COLUMNS = {"Produce": "Fruit and Veggies", "Meat & Seafood": "Meat", "Dairy & Eggs": "Dairy & Deli", "Bakery": "Bakery",
+           "Frozen": "Frozen", "Grains & Pasta": "Aisles", "Canned & Jarred": "Aisles", "Condiments & Sauces": "Aisles",
+           "Pantry & Spices": "Aisles", "Pantry": "Aisles", "Other": "Aisles"}
+
+
+def add_tasks(token, list_name, items, columns=None):
+    """items: [{"title": "6 tbsp soy sauce", "content": "Condiments · 2 recipes", "category": "Produce"}]. Returns count."""
     pid = project_id(token, list_name)
+    cols = {_plain(c["name"]): c["id"] for c in (_call(token, "GET", f"/project/{pid}/data") or {}).get("columns") or []}
+    colmap = {**COLUMNS, **(columns or {})}
     for it in items:  # ponytail: one POST per item, the Open API has no batch create
-        _call(token, "POST", "/task", {"projectId": pid, "title": it["title"], "content": it.get("content", "")})
+        body = {"projectId": pid, "title": it["title"], "content": it.get("content", "")}
+        col = cols.get(_plain(colmap.get(it.get("category", ""), "")))
+        if col:
+            body["columnId"] = col
+        _call(token, "POST", "/task", body)
     return len(items)
 
 
