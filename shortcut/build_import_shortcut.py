@@ -10,7 +10,7 @@ import sys
 import uuid
 
 HOST = "https://recipes.tainik.net:8443"
-u = {k: str(uuid.uuid4()).upper() for k in ("link", "page", "text", "post", "id", "err", "if")}
+u = {k: str(uuid.uuid4()).upper() for k in ("link", "page", "text", "post")}
 
 
 def out(name, key):  # reference another action's output
@@ -46,17 +46,9 @@ actions = [
             {"WFItemType": 0, "WFKey": tok("url"), "WFValue": tok("", out("Page URL", "link"))},
             {"WFItemType": 0, "WFKey": tok("html"), "WFValue": tok("", out("HTML text", "text"))},
         ]}}),
-    act("is.workflow.actions.getvalueforkey", UUID=u["id"], CustomOutputName="Recipe ID",
-        WFGetDictionaryValueType="Value", WFDictionaryKey="id", WFInput=tok("", out("Result", "post"))),
-    act("is.workflow.actions.conditional", GroupingIdentifier=u["if"], WFControlFlowMode=0, WFCondition=100,
-        WFInput={"Type": "Variable", "Variable": var(out("Recipe ID", "id"))}),
-    act("is.workflow.actions.openurl", WFInput=tok(HOST + "/#/recipe/", out("Recipe ID", "id"))),
-    act("is.workflow.actions.conditional", GroupingIdentifier=u["if"], WFControlFlowMode=1),
-    act("is.workflow.actions.getvalueforkey", UUID=u["err"], CustomOutputName="Error",
-        WFGetDictionaryValueType="Value", WFDictionaryKey="error", WFInput=tok("", out("Result", "post"))),
-    act("is.workflow.actions.notification", WFNotificationActionTitle="Add recipe failed",
-        WFNotificationActionBody=tok("", out("Error", "err"))),
-    act("is.workflow.actions.conditional", GroupingIdentifier=u["if"], WFControlFlowMode=2),
+    # ponytail: no If branch; the reply is {"id","name"} or {"error"}, shown as-is
+    act("is.workflow.actions.notification", WFNotificationActionTitle="Add recipe",
+        WFNotificationActionBody=tok("", out("Result", "post"))),
 ]
 
 shortcut = {

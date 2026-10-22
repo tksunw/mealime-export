@@ -9,7 +9,7 @@ python3 shortcut/build_import_shortcut.py unsigned.shortcut
 shortcuts sign --mode anyone --input unsigned.shortcut --output "Add recipe.shortcut"
 ```
 
-The builder is plain Python writing the plist, so it is reviewable and contains no iCloud ids. The hand-build steps below describe the same eleven-action shortcut; the Shortcuts editor changes between releases, so action names may differ a little from what is written here. Action identifiers are given so the steps are unambiguous.
+The builder is plain Python writing the plist, so it is reviewable and contains no iCloud ids. The hand-build steps below describe the same five-action shortcut; the Shortcuts editor changes between releases, so action names may differ a little from what is written here. Action identifiers are given so the steps are unambiguous.
 
 ## Steps
 
@@ -46,20 +46,14 @@ Action 4: **Get Contents of URL** (`is.workflow.actions.downloadurl`)
   - `html` (Text): `HTML text`
 - Rename the output to `Result`.
 
-Action 5: **Get Dictionary Value** (`is.workflow.actions.getvalueforkey`)
+Action 5: **Show Notification** (`is.workflow.actions.notification`)
 
-- Get **Value** for `id` in `Result`.
-- Rename the output to `Recipe ID`.
-
-Action 6: **If** (`is.workflow.actions.conditional`)
-
-- Condition: `Recipe ID` **has any value**.
-- Inside If: **Open URLs** (`is.workflow.actions.openurl`) with `https://recipes.tainik.net:8443/#/recipe/` followed by the `Recipe ID` variable. Opens the new recipe in the app.
-- Inside Otherwise: **Get Dictionary Value** for `error` in `Result`, then **Show Notification** (`is.workflow.actions.notification`) with that value as the body. The server's message says what went wrong, usually "no schema.org Recipe JSON-LD on that page".
+- Title: `Add recipe`. Body: `Result`.
+- The server replies with the recipe id and name on success, or an `error` message. Both show as-is. Open the app to see the new recipe at the top of the index (sorted by name, so use the filter).
 
 ## Use
 
-On any recipe page in Safari: Share, **Add recipe**. The app opens on the imported recipe. On the iPad the Home Screen app is a separate Safari context, so the Open URLs step lands in Safari, not the installed app; switch to the app and pull the index to see it.
+On any recipe page in Safari: Share, **Add recipe**. A notification shows the server's reply. Open the app; the new recipe is in the index.
 
 With `ANTHROPIC_API_KEY` set on the server the import takes 10 to 30 seconds (one Claude call fills the per-step ingredient lists, cookware and aisles). Without it, a second or two and no per-step lists. Shortcuts gives up on a request after about 60 seconds; if that ever trips, the recipe is still saved and shows on the next index load.
 
