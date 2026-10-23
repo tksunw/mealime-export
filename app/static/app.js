@@ -155,7 +155,7 @@ function renderIndex(list) {
 function recipeHTML(r) {
   const buy = r.line_items.filter((li) => !li.pantry);
   const pantry = r.line_items.filter((li) => li.pantry);
-  const li = (x, extra = "") => `<li><span>${x.quantity ? `<b>${esc(x.quantity)}</b> ` : ""}${esc(x.ingredient_name)}</span>${extra}</li>`;
+  const li = (x, extra = "") => `<li><label><input type="checkbox"><span>${x.quantity ? `<b>${esc(x.quantity)}</b> ` : ""}${esc(x.ingredient_name)}</span></label>${extra}</li>`;
   return `
   <article class="recipe">
     <img class="hero" src="${esc(r.image)}" alt="">
