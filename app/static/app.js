@@ -1,10 +1,12 @@
-// Vanilla JS, hash routing. #/ index, #/recipe/<id>, #/cook/<id>/<n>, #/plan, #/plan/<id>.
+// Vanilla JS, hash routing. #/ index, #/recipe/<id>, #/cook/<id>/<n>, #/plan, #/plan/<id>, #/library, #/staples.
 const view = document.getElementById("view");
 const filter = document.getElementById("filter");
 const MAX_PLAN = 5;
 let index = null;
 // plan: recipe ids; history: [{ids, created}]; checked/overrides/locations keyed by ingredient key; places: location names
-let state = { plan: [], history: [], checked: {}, overrides: {}, locations: {}, places: ["Refrigerator", "Freezer", "Pantry", "Spice cabinet", "Counter"], byLocation: false };
+let state = { plan: [], history: [], checked: {}, overrides: {}, locations: {}, places: ["Refrigerator", "Freezer", "Pantry", "Spice cabinet", "Counter"], byLocation: false, staples: [] };
+const stapleChecks = new Set(); // staple names ticked this visit; deliberately not saved
+let aisleOrder = null;
 const cache = {};
 
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -68,6 +70,68 @@ function addPlace(input) {
   if (p && !state.places.includes(p)) { state.places.push(p); saveState(); route(); }
 }
 function toggleByLocation() { state.byLocation = !state.byLocation; saveState(); route(); }
+
+// --- staples: {name, category}[] in state, checks live only in memory ---
+async function getAisles(name) {
+  const r = await (await fetch(`/api/aisles?name=${encodeURIComponent(name || "")}`)).json();
+  aisleOrder = r.order;
+  return r.category;
+}
+async function addStaple(input) {
+  const name = input.value.trim();
+  if (!name || state.staples.some((s) => s.name.toLowerCase() === name.toLowerCase())) return;
+  state.staples.push({ name, category: await getAisles(name) });
+  input.value = "";
+  saveState(); renderStaples();
+}
+function removeStaple(name) {
+  state.staples = state.staples.filter((s) => s.name !== name);
+  stapleChecks.delete(name);
+  saveState(); renderStaples();
+}
+function setStapleCategory(name, cat) {
+  const s = state.staples.find((x) => x.name === name);
+  if (s) { s.category = cat; saveState(); renderStaples(); }
+}
+function toggleStaple(name) {
+  stapleChecks.has(name) ? stapleChecks.delete(name) : stapleChecks.add(name);
+  view.querySelector(`[data-key="${CSS.escape(name)}"]`)?.classList.toggle("done", stapleChecks.has(name));
+  const b = view.querySelector(".copy"); if (b) { b.textContent = `Send ${stapleChecks.size} to TickTick`; b.disabled = !stapleChecks.size; }
+}
+async function sendStaples(btn) {
+  btn.disabled = true; btn.textContent = "Sending…";
+  const items = state.staples.filter((s) => stapleChecks.has(s.name)).map((s) => ({ title: s.name, content: `${s.category} · staple`, category: s.category }));
+  try {
+    const res = await fetch("/api/ticktick", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }) });
+    const data = await res.json();
+    if (res.ok) { stapleChecks.clear(); await renderStaples(); }
+    const b = res.ok ? view.querySelector(".copy") : btn;
+    b.disabled = true; b.textContent = res.ok ? `Sent ${data.sent} to ${data.list}` : "Failed: " + data.error;
+    setTimeout(() => { b.disabled = !stapleChecks.size; b.textContent = `Send ${stapleChecks.size} to TickTick`; }, 5000);
+  } catch (e) {
+    btn.textContent = "Failed";
+    setTimeout(() => { btn.disabled = false; btn.textContent = `Send ${stapleChecks.size} to TickTick`; }, 5000);
+  }
+}
+async function renderStaples() {
+  if (!aisleOrder) await getAisles();
+  const opts = (cur) => aisleOrder.map((c) => `<option ${c === cur ? "selected" : ""}>${esc(c)}</option>`).join("");
+  const cats = aisleOrder.filter((c) => state.staples.some((s) => s.category === c));
+  const byName = (a, b) => a.name.localeCompare(b.name);
+  view.innerHTML = `<section class="grocery staples">
+    <h1>Grocery staples</h1>
+    <p class="meta"><input id="newstaple" placeholder="New staple" autocomplete="off" onkeydown="if(event.key==='Enter')addStaple(this)">
+      <button class="btn ghost" onclick="addStaple(document.getElementById('newstaple'))">Add</button>
+      <button class="btn copy ghost" onclick="sendStaples(this)" ${stapleChecks.size ? "" : "disabled"}>Send ${stapleChecks.size} to TickTick</button></p>
+    ${state.staples.length ? "" : "<p class=\"meta\">Nothing yet. Add the things you buy every week.</p>"}
+    ${cats.map((c) => `<h2>${esc(c)}</h2><ul>${state.staples.filter((s) => s.category === c).sort(byName).map((s) => `
+      <li data-key="${esc(s.name)}" class="${stapleChecks.has(s.name) ? "done" : ""}">
+        <label><input type="checkbox" ${stapleChecks.has(s.name) ? "checked" : ""} onchange="toggleStaple(${esc(JSON.stringify(s.name))})"><span>${esc(s.name)}</span></label>
+        <select class="cat" aria-label="Aisle" onchange="setStapleCategory(${esc(JSON.stringify(s.name))}, this.value)">${opts(s.category)}</select>
+        <button class="x" aria-label="Remove" onclick="removeStaple(${esc(JSON.stringify(s.name))})">×</button>
+      </li>`).join("")}</ul>`).join("")}
+  </section>`;
+}
 const groceryTitle = (i) => `${i.lines.length ? i.lines.join(" + ") + " " : ""}${i.name}${i.approx?.length ? ` (about ${i.approx.join(" + ")})` : ""}`;
 async function groceryUnchecked() {
   const g = await (await fetch(`/api/grocery?ids=${state.plan.join(",")}`)).json();
@@ -110,6 +174,7 @@ function flash(msg) {
 window.togglePlan = togglePlan; window.clearPlan = clearPlan; window.restorePlan = restorePlan;
 window.toggleChecked = toggleChecked; window.setCategory = setCategory; window.copyGrocery = copyGrocery;
 window.importUrl = importUrl; window.sendTickTick = sendTickTick; window.setLocation = setLocation; window.addPlace = addPlace; window.toggleByLocation = toggleByLocation;
+window.addStaple = addStaple; window.removeStaple = removeStaple; window.setStapleCategory = setStapleCategory; window.toggleStaple = toggleStaple; window.sendStaples = sendStaples;
 
 const placeOpts = (cur) => `<option value="">—</option>${state.places.map((p) => `<option ${p === cur ? "selected" : ""}>${esc(p)}</option>`).join("")}`;
 const placeSelect = (key) => `<select class="cat" aria-label="Location" onchange="setLocation(${esc(JSON.stringify(key))}, this.value)">${placeOpts(state.locations[key])}</select>`;
@@ -320,12 +385,16 @@ async function route() {
   wakeLock?.release(); wakeLock = null;
   const p = h.match(/^#\/plan(?:\/(\d+|grocery))?/);
   const m = h.match(/^#\/recipe\/(\d+)/);
-  const lib = h.startsWith("#/library");
-  filter.hidden = !!(p || m);
+  const lib = h.startsWith("#/library"), st = h.startsWith("#/staples");
+  document.querySelectorAll(".top > a").forEach((a) => a.classList.toggle("active", a.hash === (lib ? "#/library" : st ? "#/staples" : "#/")));
+  filter.hidden = !!(p || m || st);
   document.title = "Recipes";
   if (lib) {
     await renderLibrary();
     document.title = "Ingredient library";
+  } else if (st) {
+    await renderStaples();
+    document.title = "Grocery staples";
   } else if (p) {
     await renderPlan(p[1]);
     document.title = "Plan";

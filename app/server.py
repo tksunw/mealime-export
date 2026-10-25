@@ -17,6 +17,7 @@ import threading
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import unquote
 
 sys.path.insert(0, str(Path(__file__).parent))
 from grocery import merge  # noqa: E402
@@ -92,6 +93,15 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_json(INDEX)
         if path == "/api/ingredients":
             return self.send_json(INGREDIENTS)
+        if path == "/api/aisles":  # aisle order, plus the guessed aisle for ?name= (staples page)
+            name = unquote(self.path.partition("name=")[2].split("&")[0].replace("+", " "))
+            with STATE_LOCK:
+                state = json.loads(STATE.read_text()) if STATE.is_file() else {}
+            cats = {**CATEGORIES["ingredients"], **(state.get("overrides") or {})}
+            key = normalize_name(name)
+            last = key.rsplit(" ", 1)[-1]  # ponytail: "2% milk" -> any "... milk" key; dropdown fixes the rest
+            cat = cats.get(key) or next((c for k, c in cats.items() if k.rsplit(" ", 1)[-1] == last), "Other")
+            return self.send_json({"order": CATEGORIES["order"] + ["Other"], "category": cat})
         if path == "/api/grocery":
             ids = [int(x) for x in self.path.partition("ids=")[2].split("&")[0].split(",") if x.isdigit()]
             with STATE_LOCK:

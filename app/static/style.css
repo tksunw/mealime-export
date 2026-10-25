@@ -40,8 +40,8 @@ h3 { font-size: 1rem; color: var(--muted); margin-top: 1rem; }
   padding: .75rem max(16px, env(safe-area-inset-left));
   background: var(--bg); border-bottom: 1px solid var(--line);
 }
-.brand { font-weight: 700; font-size: 1.2rem; }
-.navlink { color: var(--muted); font-size: .95rem; }
+.top > a { color: var(--muted); font-size: .95rem; }
+.top > a.active { font-weight: 700; font-size: 1.2rem; color: var(--fg); }
 #filter {
   flex: 1; max-width: 320px; margin-left: auto;
   padding: .45rem .75rem; border: 1px solid var(--line); border-radius: 8px;
@@ -197,11 +197,16 @@ body:has(#tray:not([hidden])) main { padding-bottom: 5rem; }
 .nutrition dd { margin: 0; font-weight: 600; }
 .grocery i { font-style: normal; color: var(--muted); font-size: .9rem; }
 
+/* staples */
+.staples > ul > li { grid-template-columns: 1fr auto auto; }
+.staples li.done > label span { text-decoration: none; color: var(--fg); font-weight: 600; } /* checked = buy it, not bought */
+.staples .x { font: inherit; background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 .3rem; }
+
 /* ingredient library and by-location view */
 .library li, .unset li { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
 .library i, .unset i { font-style: normal; color: var(--muted); font-size: .85rem; }
 .library .cat, .unset .cat { max-width: 11rem; font-size: .95rem; }
-#newplace { padding: .3rem .6rem; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--fg); font: inherit; font-size: .95rem; max-width: 11rem; }
+#newplace, #newstaple { padding: .3rem .6rem; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--fg); font: inherit; font-size: .95rem; max-width: 11rem; }
 
 /* add from url */
 .import { display: flex; gap: .5rem; margin: 0 0 1rem; }
