@@ -33,7 +33,7 @@ def project_id(token, name):
 
 
 # app aisle -> TickTick column (section) name; override with a "columns" dict in the token file
-COLUMNS = {"Produce": "Fruit and Veggies", "Meat & Seafood": "Meat", "Dairy & Eggs": "Dairy & Deli", "Bakery": "Bakery",
+COLUMNS = {"Produce": "Fruit and Veggies", "Meat & Seafood": "Meat", "Dairy & Eggs": "Dairy & Deli", "Deli": "Dairy & Deli", "Bakery": "Bakery",
            "Frozen": "Frozen", "Grains & Pasta": "Aisles", "Canned & Jarred": "Aisles", "Condiments & Sauces": "Aisles",
            "Pantry & Spices": "Aisles", "Pantry": "Aisles", "Other": "Aisles"}
 
