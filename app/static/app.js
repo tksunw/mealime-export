@@ -4,8 +4,8 @@ const filter = document.getElementById("filter");
 const MAX_PLAN = 5;
 let index = null;
 // plan: recipe ids; history: [{ids, created}]; checked/overrides/locations keyed by ingredient key; places: location names
-let state = { plan: [], history: [], checked: {}, overrides: {}, locations: {}, places: ["Refrigerator", "Freezer", "Pantry", "Spice cabinet", "Counter"], byLocation: false, staples: [] };
-const stapleChecks = new Set(); // staple names ticked this visit; deliberately not saved
+let state = { plan: [], history: [], checked: {}, overrides: {}, locations: {}, places: ["Refrigerator", "Freezer", "Pantry", "Spice cabinet", "Counter"], byLocation: false, staples: [], stapleChecks: [] };
+let stapleChecks = new Set(); // mirror of state.stapleChecks, rebuilt by loadState, written by saveChecks
 let aisleOrder = null;
 const cache = {};
 
@@ -21,6 +21,7 @@ async function getRecipe(id) {
 }
 async function loadState() {
   try { state = { ...state, ...(await (await fetch("/api/state")).json()) }; } catch (e) { /* offline: keep defaults */ }
+  stapleChecks = new Set(state.stapleChecks);
 }
 function saveState() {
   return fetch("/api/state", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(state) });
@@ -71,7 +72,8 @@ function addPlace(input) {
 }
 function toggleByLocation() { state.byLocation = !state.byLocation; saveState(); route(); }
 
-// --- staples: {name, category}[] in state, checks live only in memory ---
+// --- staples: {name, category}[] in state; checks persist too, cleared on send ---
+function saveChecks() { state.stapleChecks = [...stapleChecks]; return saveState(); }
 async function getAisles(name) {
   const r = await (await fetch(`/api/aisles?name=${encodeURIComponent(name || "")}`)).json();
   aisleOrder = r.order;
@@ -87,7 +89,7 @@ async function addStaple(input) {
 function removeStaple(name) {
   state.staples = state.staples.filter((s) => s.name !== name);
   stapleChecks.delete(name);
-  saveState(); renderStaples();
+  saveChecks(); renderStaples();
 }
 function setStapleCategory(name, cat) {
   const s = state.staples.find((x) => x.name === name);
@@ -95,6 +97,7 @@ function setStapleCategory(name, cat) {
 }
 function toggleStaple(name) {
   stapleChecks.has(name) ? stapleChecks.delete(name) : stapleChecks.add(name);
+  saveChecks();
   view.querySelector(`[data-key="${CSS.escape(name)}"]`)?.classList.toggle("done", stapleChecks.has(name));
   const b = view.querySelector(".copy"); if (b) { b.textContent = `Send ${stapleChecks.size} to TickTick`; b.disabled = !stapleChecks.size; }
 }
@@ -104,7 +107,7 @@ async function sendStaples(btn) {
   try {
     const res = await fetch("/api/ticktick", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }) });
     const data = await res.json();
-    if (res.ok) { stapleChecks.clear(); await renderStaples(); }
+    if (res.ok) { stapleChecks.clear(); await saveChecks(); await renderStaples(); }
     const b = res.ok ? view.querySelector(".copy") : btn;
     b.disabled = true; b.textContent = res.ok ? `Sent ${data.sent} to ${data.list}` : "Failed: " + data.error;
     setTimeout(() => { b.disabled = !stapleChecks.size; b.textContent = `Send ${stapleChecks.size} to TickTick`; }, 5000);
@@ -393,6 +396,7 @@ async function route() {
     await renderLibrary();
     document.title = "Ingredient library";
   } else if (st) {
+    await loadState(); // another device may have ticked or sent since this page loaded
     await renderStaples();
     document.title = "Grocery staples";
   } else if (p) {
