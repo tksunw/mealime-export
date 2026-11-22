@@ -5,6 +5,7 @@
 
 Env: EXPORT_DIR (has json/ and images/), PORT (default 8080),
 STATE_DIR (writable, holds state.json: plan and history; default ./state),
+IMPORT_DIR (where URL imports land; default STATE_DIR/recipes; set to EXPORT_DIR for one consolidated dir),
 CERT_DIR (optional; if it holds fullchain.pem and privkey.pem, serves HTTPS).
 Loads every json/*.json at startup; restart to pick up new recipes.
 """
@@ -35,9 +36,9 @@ CATEGORIES = json.loads((HERE / "categories.json").read_text())
 
 
 def load_recipes():
-    """Mealime export (read-only) plus recipes imported from URLs under STATE_DIR/recipes."""
+    """Mealime export plus recipes imported from URLs under IMPORT_DIR (may be the same dir)."""
     recipes = {}
-    for root in (EXPORT, IMPORTED):
+    for root in dict.fromkeys((EXPORT, IMPORTED)):
         for f in sorted((root / "json").glob("*.json")):
             r = json.loads(f.read_text())
             img = next((p.name for p in (root / "images").glob(f.stem + ".*")), None)
@@ -70,7 +71,7 @@ def rebuild():
     INGREDIENTS = sorted(({**e, "recipes": len(e["recipes"])} for e in ing.values()), key=lambda e: e["name"].lower())
 
 
-IMPORTED = Path(os.environ.get("STATE_DIR", "state")) / "recipes"
+IMPORTED = Path(os.environ.get("IMPORT_DIR") or Path(os.environ.get("STATE_DIR", "state")) / "recipes")
 IMPORT_LOCK = threading.Lock()
 TICKTICK_TOKEN = Path(os.environ.get("STATE_DIR", "state")) / "ticktick.json"
 TICKTICK_LIST = os.environ.get("TICKTICK_LIST", "Grocery")

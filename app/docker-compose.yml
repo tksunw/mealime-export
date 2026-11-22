@@ -1,5 +1,6 @@
 # eyeball (Debian 12): /etc/docker/containers/recipes/docker-compose.yml
-# Needs: Docker on eyeball, export dir copied to /srv/recipes/export,
+# Needs: Docker on eyeball, recipes (Mealime export + URL imports, one tree: json/ images/ *.md)
+# at /srv/recipes/data owned by uid 1000, backed up nightly to tank:/ssd/recipes (see PLAN.md),
 # *.tainik.net fullchain.pem + privkey.pem pushed by the Ansible cert play into ./certs
 services:
   recipes:
@@ -13,9 +14,10 @@ services:
       - "8443:8443"
     environment:
       CERT_DIR: /certs
+      IMPORT_DIR: /export  # imports land next to the Mealime export, one dir to back up
       TICKTICK_LIST: Grocery  # list name; API key goes in ./state/ticktick.json as {"access_token": "..."}
     env_file: .env  # ANTHROPIC_API_KEY=... (chmod 600); without it URL import skips the AI pass
     volumes:
-      - /srv/recipes/export:/export:ro
+      - /srv/recipes/data:/export
       - ./certs:/certs:ro
       - ./state:/state
