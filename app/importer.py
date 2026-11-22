@@ -1,14 +1,17 @@
-"""Import a recipe from a web page into the Mealime JSON shape the app reads.
+"""Import a recipe from a web page, PDF, image or plain text into the Mealime JSON shape the app reads.
 
 Path: fetch page -> schema.org Recipe JSON-LD -> Mealime-shaped dict -> optional
 Claude pass (per-step ingredient lines, cookware, aisle categories) -> json + image
-+ markdown under <dest>/. Stdlib only; Claude via urllib against the Messages API.
++ markdown under <dest>/. A PDF, image or text file goes through one Claude call that
+returns the same schema.org shape (plus per-step lines and tools), then the same path.
+Stdlib only; Claude via urllib against the Messages API.
 
 Self-check: python3 app/importer.py            (fixture, no network)
 Manual:     python3 app/importer.py <url> <dest_dir>
 """
 from __future__ import annotations
 
+import base64
 import html as _html
 import json
 import os
@@ -187,10 +190,23 @@ def to_mealime(ld: dict, rid: int, url: str) -> dict:
     }
 
 
-def enrich(r: dict, aisles: list) -> dict:
-    """One Claude call: per-step ingredient lines, cookware, aisle per ingredient. No key -> unchanged."""
+def _claude(content, max_tokens: int = 4000) -> dict:
+    """One Messages call; the JSON object in its reply. content: prompt string or content blocks."""
     key = os.environ.get("ANTHROPIC_API_KEY")
     if not key:
+        raise ValueError("ANTHROPIC_API_KEY not set")
+    body = json.dumps({"model": MODEL, "max_tokens": max_tokens, "messages": [{"role": "user", "content": content}]}).encode()
+    req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=body, headers={
+        "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"})
+    with urllib.request.urlopen(req, timeout=180) as resp:
+        text = "".join(b.get("text", "") for b in json.loads(resp.read())["content"])
+    return json.loads(text[text.index("{"): text.rindex("}") + 1])
+
+
+def enrich(r: dict, aisles: list) -> dict:
+    """One Claude call: per-step ingredient lines, cookware, aisle per ingredient. No key -> unchanged.
+    Steps and cookware already filled (document imports) are kept."""
+    if not os.environ.get("ANTHROPIC_API_KEY"):
         return r
     ings = "\n".join(f"{li['quantity']} {li['ingredient_name']}".strip() for li in r["line_items"])
     steps = "\n".join(f"{s['id']}. {s['primary_message']}" for s in r["instructions"])
@@ -206,17 +222,68 @@ Return JSON only, no prose, shape:
 {{"steps": {{"<step id>": ["<qty> <ingredient>", ...]}}, "cookwares": ["<tool>", ...], "categories": {{"<ingredient name as written>": "<aisle>"}}}}
 
 Rules: "steps" lists the ingredients used in each step with the amount used in that step (split an ingredient across steps if the recipe does; omit steps that use none). Every ingredient must appear in at least one step; "combine all ingredients" means list all of them there. Write amounts with unicode fractions and short units (tsp, tbsp, cup, oz, lb). "cookwares" is the kitchen equipment needed (pans, bowls, knife, etc.). "categories" maps every ingredient to one of: {", ".join(aisles)}."""
-    body = json.dumps({"model": MODEL, "max_tokens": 4000, "messages": [{"role": "user", "content": prompt}]}).encode()
-    req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=body, headers={
-        "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"})
-    with urllib.request.urlopen(req, timeout=90) as resp:
-        text = "".join(b.get("text", "") for b in json.loads(resp.read())["content"])
-    data = json.loads(text[text.index("{"): text.rindex("}") + 1])
+    data = _claude(prompt)
     for s in r["instructions"]:
-        lines = data.get("steps", {}).get(str(s["id"])) or []
-        s["secondary_message"] = "\n".join(str(x) for x in lines)
-    r["cookwares"] = [{"id": i + 1, "name": str(c), "slug": re.sub(r"\W+", "-", str(c).lower())} for i, c in enumerate(data.get("cookwares") or [])]
+        if not s.get("secondary_message"):
+            s["secondary_message"] = "\n".join(str(x) for x in data.get("steps", {}).get(str(s["id"])) or [])
+    r["cookwares"] = r.get("cookwares") or _cookwares(data.get("cookwares"))
     r["_categories"] = {str(k): v for k, v in (data.get("categories") or {}).items() if v in aisles}
+    return r
+
+
+def _cookwares(names) -> list:
+    return [{"id": i + 1, "name": str(c), "slug": re.sub(r"\W+", "-", str(c).lower())} for i, c in enumerate(names or [])]
+
+
+DOC_PROMPT = """This is a recipe (PDF, image or plain text). Return it as JSON only, no prose, shape:
+{"name": "...", "recipeYield": "4 servings", "totalTime": "PT35M", "recipeIngredient": ["2 tbsp soy sauce", ...], "recipeInstructions": ["step text", ...], "stepIngredients": {"1": ["1 cup jasmine rice", ...]}, "tool": ["chef's knife", ...], "nutrition": {"calories": "407 kcal", "fatContent": "15 g", "carbohydrateContent": "37 g", "proteinContent": "30 g", "fiberContent": "4 g", "sodiumContent": "221 mg", "sugarContent": "5 g"}}
+
+Rules: recipeIngredient is the full ingredient list, one entry per ingredient, quantity first, then unit, then the name as written ("1 ½ lb chicken breasts, boneless skinless"; no quantity for to-taste or pantry items). recipeInstructions is every step in order without its number, text verbatim, no headings. stepIngredients maps the 1-based step number to the ingredient lines used in that step with the amount used there: if the document lists ingredients under each step (indented or italic lines below the step text), copy those exactly; otherwise work them out from the step text, splitting an ingredient across steps when the recipe does. Every ingredient appears in at least one step. tool is the document's equipment list if it has one, else the equipment the steps need. "Makes 6 meals" means recipeYield "6 servings". Omit nutrition keys the document does not state; values are per serving. Ignore prices, ratings, ads, author notes and site chrome. If there is more than one recipe, return only the first."""
+
+
+def from_document(data: bytes | str, media_type: str) -> dict:
+    """PDF, image or plain text -> schema.org-shaped dict (plus stepIngredients and tool) via one Claude call."""
+    if media_type == "text/plain":
+        text = data.decode("utf-8", "replace") if isinstance(data, bytes) else data
+        return _claude(DOC_PROMPT + "\n\nRecipe:\n" + text, 6000)
+    block = "document" if media_type == "application/pdf" else "image"
+    return _claude([{"type": block, "source": {"type": "base64", "media_type": media_type, "data": base64.b64encode(data).decode()}},
+                    {"type": "text", "text": DOC_PROMPT}], 6000)
+
+
+def document_to_mealime(ld: dict, rid: int, source: str) -> dict:
+    r = to_mealime(ld, rid, source)
+    for s in r["instructions"]:
+        s["secondary_message"] = "\n".join(str(x) for x in (ld.get("stepIngredients") or {}).get(str(s["id"])) or [])
+    r["cookwares"] = _cookwares(ld.get("tool"))
+    return r
+
+
+def pdf_photo(data: bytes) -> bytes | None:
+    """Largest JPEG stream in a PDF: browser and Canva prints keep the recipe photo as DCTDecode.
+    Small ones are icons. ponytail: Flate (raw pixel) images are skipped, no PNG writer here."""
+    best = b""
+    for m in re.finditer(rb"stream\r?\n(?=\xff\xd8\xff)", data):
+        start, end = m.end(), data.find(b"endstream", m.end())
+        if end > start and end - start > len(best):
+            best = data[start:end]
+    return best.rstrip(b"\r\n") if len(best) > 20_000 else None
+
+
+def import_document(data: bytes | str, media_type: str, source: str, dest: Path, rid: int) -> dict:
+    """One Claude call on the file, then the same save path as a URL import. The photo comes out of
+    the PDF when it has one. Needs ANTHROPIC_API_KEY."""
+    r = document_to_mealime(from_document(data, media_type), rid, source)
+    stem = f"{r['slug']}-{rid}"
+    (dest / "json").mkdir(parents=True, exist_ok=True)
+    (dest / "images").mkdir(exist_ok=True)
+    image = None
+    photo = pdf_photo(data) if media_type == "application/pdf" else None
+    if photo:
+        (dest / "images" / f"{stem}.jpg").write_bytes(photo)
+        image = f"images/{stem}.jpg"
+    r["_image"] = image
+    _save(r, dest, source, image)
     return r
 
 
@@ -278,6 +345,11 @@ def _selfcheck():
     assert r["serving_count"] == 4 and r["cooking_minutes"] == 35 and r["presentation_image_url"] == "https://x.test/a.jpg"
     assert r["nutrition"] == {"energy": 420.0, "protein": 30.0, "sodium": 800.0}, r["nutrition"]
     assert enrich(dict(r), ["Produce"]) is not None  # no key in the test env: passthrough
+    d = document_to_mealime({"name": "Doc Soup", "recipeYield": "6 servings", "recipeIngredient": ["2 lbs hash browns", "1 tsp salt"],
+                             "recipeInstructions": ["Brown the beef.", "Add salt."], "stepIngredients": {"2": ["1 tsp salt"]}, "tool": ["skillet"]}, 1000002, "Doc Soup.pdf")
+    assert [s["secondary_message"] for s in d["instructions"]] == ["", "1 tsp salt"] and d["cookwares"][0]["name"] == "skillet" and d["serving_count"] == 6
+    fake = b"%PDF\nstream\n\xff\xd8\xff" + b"x" * 30000 + b"\nendstream\nstream\n\xff\xd8\xffsmall\nendstream\n"
+    assert pdf_photo(fake).startswith(b"\xff\xd8\xff") and len(pdf_photo(fake)) == 30003 and pdf_photo(b"%PDF no images") is None
     print("ok: importer fixture")
 
 

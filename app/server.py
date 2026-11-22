@@ -9,6 +9,7 @@ IMPORT_DIR (where URL imports land; default STATE_DIR/recipes; set to EXPORT_DIR
 CERT_DIR (optional; if it holds fullchain.pem and privkey.pem, serves HTTPS).
 Loads every json/*.json at startup; restart to pick up new recipes.
 """
+import base64
 import json
 import mimetypes
 import os
@@ -22,7 +23,7 @@ from urllib.parse import unquote
 
 sys.path.insert(0, str(Path(__file__).parent))
 from grocery import merge  # noqa: E402
-from importer import enrich_saved, import_url  # noqa: E402
+from importer import enrich_saved, import_document, import_url  # noqa: E402
 from ticktick import add_tasks  # noqa: E402
 from ingredients import normalize_name  # noqa: E402
 
@@ -126,17 +127,28 @@ class Handler(SimpleHTTPRequestHandler):
         if path != "/api/import":
             return self.send_error(HTTPStatus.NOT_FOUND)
         try:
-            body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", 0)), 8 * 1024 * 1024)))
-            url = body["url"].strip()
-            html = body.get("html") or None  # optional: page source fetched by the browser/Shortcut
-        except (ValueError, KeyError, AttributeError):
+            body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", 0)), 16 * 1024 * 1024)))
+            url = html = doc = None
+            if "url" in body:
+                url = body["url"].strip()
+                html = body.get("html") or None  # optional: page source fetched by the browser/Shortcut
+            elif "text" in body:  # {text} | {pdf: base64} | {image: base64, media_type}, plus optional name
+                doc, media = str(body["text"]), "text/plain"
+            elif "pdf" in body:
+                doc, media = base64.b64decode(body["pdf"]), "application/pdf"
+            elif "image" in body:
+                doc, media = base64.b64decode(body["image"]), str(body.get("media_type") or "image/jpeg")
+            else:
+                raise KeyError("url")
+            name = str(body.get("name") or url or media)
+        except (ValueError, KeyError, AttributeError, TypeError):
             return self.send_error(HTTPStatus.BAD_REQUEST)
         with IMPORT_LOCK:  # ponytail: one import at a time; ids come from the current max
             rid = max([1000000] + [i for i in RECIPES if i >= 1000000]) + 1
             try:
-                r = import_url(url, IMPORTED, rid, html)
+                r = import_url(url, IMPORTED, rid, html) if url else import_document(doc, media, name, IMPORTED, rid)
             except Exception as e:  # network, parse, Claude: all land here with the message
-                print(f"import failed for {url} (html={'yes' if html else 'no'}): {e}", file=sys.stderr)
+                print(f"import failed for {name} (html={'yes' if html else 'no'}): {e}", file=sys.stderr)
                 body = json.dumps({"error": str(e)}).encode()
                 self.send_response(HTTPStatus.BAD_REQUEST)
                 self.send_header("Content-Type", "application/json")
