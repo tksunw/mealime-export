@@ -306,10 +306,14 @@ def import_document(data: bytes | str, media_type: str, source: str, dest: Path,
     (dest / "json").mkdir(parents=True, exist_ok=True)
     (dest / "images").mkdir(exist_ok=True)
     image = None
-    photo = pdf_photo(data) if isinstance(data, bytes) and data.startswith(b"%PDF") else None
+    if isinstance(data, bytes) and data.startswith(b"%PDF"):
+        photo = (pdf_photo(data), ".jpg") if pdf_photo(data) else None
+    else:
+        text = data if isinstance(data, str) else data.decode("utf-8", "replace") if media_type in ("auto", "text/plain") else ""
+        photo = _photo_from_link(text) if text else None
     if photo:
-        (dest / "images" / f"{stem}.jpg").write_bytes(photo)
-        image = f"images/{stem}.jpg"
+        (dest / "images" / (stem + photo[1])).write_bytes(photo[0])
+        image = f"images/{stem}{photo[1]}"
     r["_image"] = image
     _save(r, dest, source, image)
     return r
@@ -327,6 +331,24 @@ def _save(r: dict, dest: Path, url: str, image: str | None):
         pass
 
 
+def _download_image(url: str) -> tuple[bytes, str]:
+    img = urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": UA}), timeout=20)
+    ext = Path(urlparse(url).path).suffix.lower()
+    return img.read(MAX_BYTES), ext if ext in (".jpg", ".jpeg", ".png", ".webp") else ".jpg"
+
+
+def _photo_from_link(text: str) -> tuple[bytes, str] | None:
+    """A pasted note usually carries its source link: take that page's schema.org image if the site answers."""
+    m = re.search(r"https?://[^\s<>\"']+", text)
+    if not m:
+        return None
+    try:
+        url = image_of(find_recipe(fetch(m.group().rstrip(".,)"))))
+        return _download_image(url) if url else None
+    except Exception:  # ponytail: 403s, dead links and non-recipe pages just mean no photo
+        return None
+
+
 def import_url(url: str, dest: Path, rid: int, html: str | None = None) -> dict:
     """Fetch (or take the page html from a browser-side fetch, since many recipe sites 403
     non-browser TLS fingerprints), convert, save json/image/markdown under dest. Fast path,
@@ -339,10 +361,8 @@ def import_url(url: str, dest: Path, rid: int, html: str | None = None) -> dict:
     image = None
     if r.get("presentation_image_url"):
         try:
-            img = urllib.request.urlopen(urllib.request.Request(r["presentation_image_url"], headers={"User-Agent": UA}), timeout=20)
-            ext = Path(urlparse(r["presentation_image_url"]).path).suffix.lower() or ".jpg"
-            ext = ext if ext in (".jpg", ".jpeg", ".png", ".webp") else ".jpg"
-            (dest / "images" / (stem + ext)).write_bytes(img.read(MAX_BYTES))
+            data, ext = _download_image(r["presentation_image_url"])
+            (dest / "images" / (stem + ext)).write_bytes(data)
             image = f"images/{stem}{ext}"
         except Exception:  # ponytail: no photo is fine
             pass
@@ -385,6 +405,7 @@ def _selfcheck():
             raise AssertionError(bad)
         except ValueError:
             pass
+    assert _photo_from_link("no links here") is None and _photo_from_link("Link: https://127.0.0.1:9/x") is None
     print("ok: importer fixture")
 
 
