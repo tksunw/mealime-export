@@ -57,6 +57,46 @@ On any recipe page in Safari: Share, **Add recipe**. An alert shows the server's
 
 With `ANTHROPIC_API_KEY` set on the server the import takes 10 to 30 seconds (one Claude call fills the per-step ingredient lists, cookware and aisles). Without it, a second or two and no per-step lists. Shortcuts gives up on a request after about 60 seconds; if that ever trips, the recipe is still saved and shows on the next index load.
 
+## Second shortcut: Add recipe file
+
+A saved PDF, a photo of a cookbook page, a screenshot, or a text file. Separate shortcut, because the Share Sheet's "Receive" list and the actions differ and a single shortcut would need an If on the input type. The server sniffs the file type, so the shortcut does no branching.
+
+```
+python3 shortcut/build_import_shortcut.py --file unsigned.shortcut
+shortcuts sign --mode anyone --input unsigned.shortcut --output "Add recipe file.shortcut"
+```
+
+Hand build: new shortcut named `Add recipe file`.
+
+Shortcut settings:
+
+- Turn on **Show in Share Sheet**.
+- Receive: **PDFs**, **Images**, **Files**, **Text**. Untick the rest.
+- If there is no input: **Ask for** File.
+
+Action 1: **Base64 Encode** (`is.workflow.actions.base64encode`)
+
+- Input: **Shortcut Input**. Mode: Encode. Line Breaks: **None**.
+- Rename the output to `File base64`.
+
+Action 2: **Get Name** (`is.workflow.actions.getitemname`)
+
+- Input: **Shortcut Input**. Rename the output to `File name`. Becomes the source shown in the recipe's markdown.
+
+Action 3: **Get Contents of URL** (`is.workflow.actions.downloadurl`)
+
+- URL: `https://recipes.tainik.net:8443/api/import`
+- Method: **POST**. Request Body: **JSON**, two fields:
+  - `file` (Text): `File base64`
+  - `name` (Text): `File name`
+- Rename the output to `Result`.
+
+Action 4: **Show Alert** (`is.workflow.actions.alert`)
+
+- Title: `Add recipe file`. Message: `Result`.
+
+Use: in Files, Photos, Mail or Safari's PDF viewer, Share, **Add recipe file**. The server needs `ANTHROPIC_API_KEY` for this route (one Claude call reads the document); without it the reply is an error. Takes 15 to 40 seconds for a multi-page PDF, within the Shortcut's limit. Photos: share as JPEG; HEIC is rejected with a clear message (Photos converts to JPEG on share by default). A PDF with an embedded JPEG photo gets it as the recipe image; iOS "print to PDF" pages have none. Request size limit is 16 MB, so base64 of a file up to about 12 MB.
+
 ## What it does not do
 
-Two network calls: GET the shared page, POST to `recipes.tainik.net`. No files written, no other hosts. The page HTML is sent only to your own server. Sites that block even iOS fetches (rare) fail at action 2 with an HTTP error; the server's direct fetch would have failed on those too.
+Two network calls: GET the shared page, POST to `recipes.tainik.net`. No files written, no other hosts. The page HTML (or the shared file) is sent only to your own server. Sites that block even iOS fetches (rare) fail at action 2 with an HTTP error; the server's direct fetch would have failed on those too.

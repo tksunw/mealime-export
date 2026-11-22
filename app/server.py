@@ -138,6 +138,8 @@ class Handler(SimpleHTTPRequestHandler):
                 doc, media = base64.b64decode(body["pdf"]), "application/pdf"
             elif "image" in body:
                 doc, media = base64.b64decode(body["image"]), str(body.get("media_type") or "image/jpeg")
+            elif "file" in body:  # {file: base64} of anything; importer sniffs the type, so a share-sheet Shortcut needs no branching
+                doc, media = base64.b64decode(body["file"]), "auto"
             else:
                 raise KeyError("url")
             name = str(body.get("name") or url or media)

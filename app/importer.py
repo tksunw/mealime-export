@@ -247,8 +247,30 @@ DOC_PROMPT = """This is a recipe (PDF, image or plain text). Return it as JSON o
 Rules: recipeIngredient is the full ingredient list, one entry per ingredient, quantity first, then unit, then the name as written ("1 ½ lb chicken breasts, boneless skinless"; no quantity for to-taste or pantry items). recipeInstructions is every step in order without its number, text verbatim, no headings. stepIngredients maps the 1-based step number to the ingredient lines used in that step with the amount used there: if the document lists ingredients under each step (indented or italic lines below the step text), copy those exactly; otherwise work them out from the step text, splitting an ingredient across steps when the recipe does. Every ingredient appears in at least one step. tool is the document's equipment list if it has one, else the equipment the steps need. "Makes 6 meals" means recipeYield "6 servings". Omit nutrition keys the document does not state; values are per serving. Ignore prices, ratings, ads, author notes and site chrome. If there is more than one recipe, return only the first."""
 
 
+def sniff(data: bytes) -> str:
+    """Media type from magic bytes; anything that decodes as UTF-8 is text."""
+    if data.startswith(b"%PDF"):
+        return "application/pdf"
+    if data.startswith(b"\x89PNG"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    if data[4:8] == b"ftyp":
+        raise ValueError("HEIC/HEIF not supported, share it as JPEG")
+    try:
+        data.decode("utf-8")
+    except UnicodeDecodeError:
+        raise ValueError("not a PDF, PNG, JPEG, WebP or text file") from None
+    return "text/plain"
+
+
 def from_document(data: bytes | str, media_type: str) -> dict:
-    """PDF, image or plain text -> schema.org-shaped dict (plus stepIngredients and tool) via one Claude call."""
+    """PDF, image or plain text -> schema.org-shaped dict (plus stepIngredients and tool) via one Claude call.
+    media_type "auto" sniffs it from the bytes."""
+    if media_type == "auto":
+        media_type = sniff(data)
     if media_type == "text/plain":
         text = data.decode("utf-8", "replace") if isinstance(data, bytes) else data
         return _claude(DOC_PROMPT + "\n\nRecipe:\n" + text, 6000)
@@ -284,7 +306,7 @@ def import_document(data: bytes | str, media_type: str, source: str, dest: Path,
     (dest / "json").mkdir(parents=True, exist_ok=True)
     (dest / "images").mkdir(exist_ok=True)
     image = None
-    photo = pdf_photo(data) if media_type == "application/pdf" else None
+    photo = pdf_photo(data) if isinstance(data, bytes) and data.startswith(b"%PDF") else None
     if photo:
         (dest / "images" / f"{stem}.jpg").write_bytes(photo)
         image = f"images/{stem}.jpg"
@@ -356,6 +378,13 @@ def _selfcheck():
     assert [s["secondary_message"] for s in d["instructions"]] == ["", "½ tbsp salt\n2 lb beef"], d["instructions"] and d["cookwares"][0]["name"] == "skillet" and d["serving_count"] == 6
     fake = b"%PDF\nstream\n\xff\xd8\xff" + b"x" * 30000 + b"\nendstream\nstream\n\xff\xd8\xffsmall\nendstream\n"
     assert pdf_photo(fake).startswith(b"\xff\xd8\xff") and len(pdf_photo(fake)) == 30003 and pdf_photo(b"%PDF no images") is None
+    assert sniff(b"%PDF-1.4") == "application/pdf" and sniff("2 cups water".encode()) == "text/plain" and sniff(b"\xff\xd8\xffdata") == "image/jpeg"
+    for bad in (b"\x00\x00\x00\x18ftypheic", b"\x00\x01\xff\xfe"):
+        try:
+            sniff(bad)
+            raise AssertionError(bad)
+        except ValueError:
+            pass
     print("ok: importer fixture")
 
 
