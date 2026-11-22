@@ -225,10 +225,16 @@ Rules: "steps" lists the ingredients used in each step with the amount used in t
     data = _claude(prompt)
     for s in r["instructions"]:
         if not s.get("secondary_message"):
-            s["secondary_message"] = "\n".join(str(x) for x in data.get("steps", {}).get(str(s["id"])) or [])
+            s["secondary_message"] = "\n".join(_norm_line(x) for x in data.get("steps", {}).get(str(s["id"])) or [])
     r["cookwares"] = r.get("cookwares") or _cookwares(data.get("cookwares"))
     r["_categories"] = {str(k): v for k, v in (data.get("categories") or {}).items() if v in aisles}
     return r
+
+
+def _norm_line(line) -> str:
+    """Step ingredient line through the same quantity normalisation as the ingredient list ("1/2 Tbsp" -> "½ tbsp")."""
+    q, n = split_ingredient(str(line))
+    return f"{q} {n}".strip()
 
 
 def _cookwares(names) -> list:
@@ -254,7 +260,7 @@ def from_document(data: bytes | str, media_type: str) -> dict:
 def document_to_mealime(ld: dict, rid: int, source: str) -> dict:
     r = to_mealime(ld, rid, source)
     for s in r["instructions"]:
-        s["secondary_message"] = "\n".join(str(x) for x in (ld.get("stepIngredients") or {}).get(str(s["id"])) or [])
+        s["secondary_message"] = "\n".join(_norm_line(x) for x in (ld.get("stepIngredients") or {}).get(str(s["id"])) or [])
     r["cookwares"] = _cookwares(ld.get("tool"))
     return r
 
@@ -346,8 +352,8 @@ def _selfcheck():
     assert r["nutrition"] == {"energy": 420.0, "protein": 30.0, "sodium": 800.0}, r["nutrition"]
     assert enrich(dict(r), ["Produce"]) is not None  # no key in the test env: passthrough
     d = document_to_mealime({"name": "Doc Soup", "recipeYield": "6 servings", "recipeIngredient": ["2 lbs hash browns", "1 tsp salt"],
-                             "recipeInstructions": ["Brown the beef.", "Add salt."], "stepIngredients": {"2": ["1 tsp salt"]}, "tool": ["skillet"]}, 1000002, "Doc Soup.pdf")
-    assert [s["secondary_message"] for s in d["instructions"]] == ["", "1 tsp salt"] and d["cookwares"][0]["name"] == "skillet" and d["serving_count"] == 6
+                             "recipeInstructions": ["Brown the beef.", "Add salt."], "stepIngredients": {"2": ["1/2 Tbsp salt", "2 lbs beef"]}, "tool": ["skillet"]}, 1000002, "Doc Soup.pdf")
+    assert [s["secondary_message"] for s in d["instructions"]] == ["", "½ tbsp salt\n2 lb beef"], d["instructions"] and d["cookwares"][0]["name"] == "skillet" and d["serving_count"] == 6
     fake = b"%PDF\nstream\n\xff\xd8\xff" + b"x" * 30000 + b"\nendstream\nstream\n\xff\xd8\xffsmall\nendstream\n"
     assert pdf_photo(fake).startswith(b"\xff\xd8\xff") and len(pdf_photo(fake)) == 30003 and pdf_photo(b"%PDF no images") is None
     print("ok: importer fixture")
