@@ -22,22 +22,26 @@ def fmt_q(amount: Fraction, unit: str) -> str:
     if unit and amount > 1:
         tail = unit.rsplit(" ", 1)[-1]  # "(5 oz) pkg" -> "pkg"
         if tail in PLURAL:
-            unit += "s"
+            unit += "es" if tail.endswith("ch") else "s"
     return f"{fmt_amount(amount)} {unit}".strip()
 
 
 def scale(r, servings):
     """Copy of recipe r for `servings` people: list quantities, per-step lines and serving_count rescaled.
-    Volume and mass round to the nearest ⅛, counts and packages to the nearest ¼; quantities the parser
+    A recipe with no serving_count treats `servings` as a plain multiplier (1x/2x/3x) and keeps it unset.
+    Results that are not already a kitchen fraction round to the nearest ⅛ (volume, mass) or ¼ (the rest); quantities the parser
     cannot read ("1 splash") stay as written. Step prose is left alone, same as Allrecipes."""
     base = r.get("serving_count")
-    if not base or not servings or servings == base:
+    if not servings or servings == (base or 1):
         return r
-    f = Fraction(servings) / base
+    f = Fraction(servings) / (base or 1)
 
     def mul(q):
+        x = q.amount * f
+        if x.denominator in (1, 2, 3, 4, 6, 8):  # already a kitchen fraction (⅔ cup × 2 = 1 ⅓ cups): keep it
+            return x
         step = Fraction(1, 8) if q.family in ("volume", "mass") else Fraction(1, 4)
-        return max(step, Fraction(round(q.amount * f / step)) * step)
+        return max(step, Fraction(round(x / step)) * step)
 
     def line(s):
         q, rest = parse_line(s)
@@ -50,7 +54,7 @@ def scale(r, servings):
             return s
         return fmt_q(mul(q), q.unit) if q else s
 
-    out = {**r, "serving_count": servings, "servings_base": base,
+    out = {**r, "serving_count": servings if base else None, "servings_base": base,
            "line_items": [{**li, "quantity": qty(li.get("quantity"))} for li in r["line_items"]],
            "instructions": [{**st, "secondary_message": "\n".join(line(l) for l in (st.get("secondary_message") or "").splitlines())} for st in r["instructions"]]}
     for st in out["instructions"]:
@@ -144,8 +148,12 @@ def _selfcheck(export_dir):
     assert s["serving_count"] == 6 and s["servings_base"] == 4
     assert [li["quantity"] for li in s["line_items"]] == ["1 ½ lb", "3 tbsp", "3 cloves", "", "1 splash", "2 ¼ tsp"], [li["quantity"] for li in s["line_items"]]
     assert s["instructions"][0]["uses"] == ["¾ tsp salt", "1 ½ lb chicken breasts"] and s["instructions"][1]["secondary_message"] == "⅜ tsp salt"
-    assert scale(a, 6) is a and scale({**a, "serving_count": 4}, 4)["line_items"] is a["line_items"]  # no base or unchanged: untouched
+    assert scale(a, None) is a and scale({**a, "serving_count": 4}, 4)["line_items"] is a["line_items"]  # unset or unchanged: untouched
     assert scale({**a, "serving_count": 4}, 1)["line_items"][2]["quantity"] == "½ clove"  # 2/4 cloves rounds to the ¼ grid; never 0
+    s = scale({"serving_count": 2, "line_items": [{"quantity": "⅔ cup", "ingredient_name": "rice"}, {"quantity": "1 bunch", "ingredient_name": "kale"}], "instructions": []}, 4)
+    assert [li["quantity"] for li in s["line_items"]] == ["1 ⅓ cups", "2 bunches"], [li["quantity"] for li in s["line_items"]]
+    s = scale(a, 3)  # no serving_count: plain multiplier
+    assert s["serving_count"] is None and [li["quantity"] for li in s["line_items"]][:3] == ["3 lb", "6 tbsp", "6 cloves"] and scale(a, 1) is a
     assert [i["category"] for i in g["items"]] == sorted(
         (i["category"] for i in g["items"]), key=g["order"].index)
     # whole export merges without error

@@ -223,7 +223,7 @@ function renderIndex(list) {
         aria-label="${inPlan(r.id) ? "Remove from plan" : "Add to plan"}">${inPlan(r.id) ? "✓" : "+"}</button>
       <a class="card-body" href="#/recipe/${r.id}">
         <h2>${esc(r.name)}</h2>
-        <p class="meta">${r.minutes} min · ${r.servings} servings · ${esc(r.origin)}</p>
+        <p class="meta">${r.minutes} min${r.servings ? ` · ${r.servings} servings` : ""} · ${esc(r.origin)}</p>
       </a>
     </div>`).join("")}</section>`;
 }
@@ -236,10 +236,7 @@ function recipeHTML(r) {
   <article class="recipe">
     <img class="hero" src="${esc(r.image)}" alt="">
     <h1>${esc(r.name)}</h1>
-    <p class="meta">${r.cooking_minutes} min ·
-      <span class="servings"><button class="btn ghost" onclick="setServings(${r.id},${r.serving_count - 1})" aria-label="Fewer servings">−</button>
-        ${r.serving_count} servings${r.servings_base ? ` <small>(recipe makes ${r.servings_base})</small>` : ""}
-        <button class="btn ghost" onclick="setServings(${r.id},${r.serving_count + 1})" aria-label="More servings">+</button></span> · ${r.origin_url ? `<a href="${esc(r.origin_url)}" target="_blank" rel="noopener">${esc(r.origin)}</a>` : esc(r.origin)}
+    <p class="meta">${r.cooking_minutes} min · ${servingsHTML(r)} · ${r.origin_url ? `<a href="${esc(r.origin_url)}" target="_blank" rel="noopener">${esc(r.origin)}</a>` : esc(r.origin)}
       <a class="btn" href="#/cook/${r.id}/1">Cook</a>
       <button class="btn ghost" onclick="togglePlan(${r.id})" ${!inPlan(r.id) && state.plan.length >= MAX_PLAN ? "disabled" : ""}>
         ${inPlan(r.id) ? "✓ In plan" : "+ Plan"}</button></p>
@@ -265,6 +262,17 @@ function recipeHTML(r) {
     </section>
     <section class="pane" data-pane="nutrition" hidden>${nutritionHTML(r.nutrition)}</section>
   </article>`;
+}
+
+// Stepper when the recipe states servings; otherwise 1x/2x/3x, where state.servings holds the multiplier.
+function servingsHTML(r) {
+  if (r.serving_count == null) {
+    const cur = state.servings[r.id] || 1;
+    return `<span class="servings">${[1, 2, 3].map((x) => `<button class="btn ghost ${cur === x ? "on" : ""}" onclick="setServings(${r.id},${x})">${x}x</button>`).join("")}</span>`;
+  }
+  return `<span class="servings"><button class="btn ghost" onclick="setServings(${r.id},${r.serving_count - 1})" aria-label="Fewer servings">−</button>
+    ${r.serving_count} servings${r.servings_base ? ` <small>(recipe makes ${r.servings_base})</small>` : ""}
+    <button class="btn ghost" onclick="setServings(${r.id},${r.serving_count + 1})" aria-label="More servings">+</button></span>`;
 }
 
 function byLocationHTML(items, li) {
