@@ -23,7 +23,7 @@ from urllib.parse import unquote
 
 sys.path.insert(0, str(Path(__file__).parent))
 from grocery import merge  # noqa: E402
-from importer import enrich_saved, import_document, import_url  # noqa: E402
+from importer import enrich_saved, import_document, import_url, origin_of  # noqa: E402
 from ticktick import add_tasks  # noqa: E402
 from ingredients import normalize_name  # noqa: E402
 
@@ -44,6 +44,7 @@ def load_recipes():
             r = json.loads(f.read_text())
             img = next((p.name for p in (root / "images").glob(f.stem + ".*")), None)
             r["image"] = f"/images/{img}" if img else None
+            r["origin"], r["origin_url"] = origin_of(r)
             CATEGORIES["ingredients"].update({normalize_name(k): v for k, v in r.pop("_categories", {}).items()})
             for li in r["line_items"]:
                 li["pantry"] = not (li.get("quantity") or "").strip()
@@ -61,7 +62,7 @@ def rebuild():
     RECIPES = load_recipes()
     INDEX = [
         {"id": r["id"], "name": r["name"], "slug": r["slug"], "minutes": r.get("cooking_minutes"),
-         "servings": r.get("serving_count"), "image": r["image"]}
+         "servings": r.get("serving_count"), "image": r["image"], "origin": r["origin"]}
         for r in sorted(RECIPES.values(), key=lambda r: r["name"].lower())
     ]
     ing = {}

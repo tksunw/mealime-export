@@ -203,7 +203,7 @@ async function renderLibrary() {
 // --- views ---
 function renderIndex(list) {
   const q = filter.value.trim().toLowerCase();
-  const shown = q ? list.filter((r) => r.name.toLowerCase().includes(q)) : list;
+  const shown = q ? list.filter((r) => `${r.name} ${r.origin}`.toLowerCase().includes(q)) : list;
   const full = state.plan.length >= MAX_PLAN;
   view.innerHTML = `<form class="import" onsubmit="importUrl(event)">
     <input type="url" name="url" placeholder="Paste a recipe URL to add it" required>
@@ -215,7 +215,7 @@ function renderIndex(list) {
         aria-label="${inPlan(r.id) ? "Remove from plan" : "Add to plan"}">${inPlan(r.id) ? "✓" : "+"}</button>
       <a class="card-body" href="#/recipe/${r.id}">
         <h2>${esc(r.name)}</h2>
-        <p class="meta">${r.minutes} min · ${r.servings} servings</p>
+        <p class="meta">${r.minutes} min · ${r.servings} servings · ${esc(r.origin)}</p>
       </a>
     </div>`).join("")}</section>`;
 }
@@ -228,7 +228,7 @@ function recipeHTML(r) {
   <article class="recipe">
     <img class="hero" src="${esc(r.image)}" alt="">
     <h1>${esc(r.name)}</h1>
-    <p class="meta">${r.cooking_minutes} min · ${r.serving_count} servings
+    <p class="meta">${r.cooking_minutes} min · ${r.serving_count} servings · ${r.origin_url ? `<a href="${esc(r.origin_url)}" target="_blank" rel="noopener">${esc(r.origin)}</a>` : esc(r.origin)}
       <a class="btn" href="#/cook/${r.id}/1">Cook</a>
       <button class="btn ghost" onclick="togglePlan(${r.id})" ${!inPlan(r.id) && state.plan.length >= MAX_PLAN ? "disabled" : ""}>
         ${inPlan(r.id) ? "✓ In plan" : "+ Plan"}</button></p>

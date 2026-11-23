@@ -244,9 +244,9 @@ def _cookwares(names) -> list:
 
 
 DOC_PROMPT = """This is a recipe (PDF, image or plain text). Return it as JSON only, no prose, shape:
-{"name": "...", "recipeYield": "4 servings", "totalTime": "PT35M", "recipeIngredient": ["2 tbsp soy sauce", ...], "recipeInstructions": ["step text", ...], "stepIngredients": {"1": ["1 cup jasmine rice", ...]}, "tool": ["chef's knife", ...], "nutrition": {"calories": "407 kcal", "fatContent": "15 g", "carbohydrateContent": "37 g", "proteinContent": "30 g", "fiberContent": "4 g", "sodiumContent": "221 mg", "sugarContent": "5 g"}}
+{"name": "...", "recipeYield": "4 servings", "totalTime": "PT35M", "recipeIngredient": ["2 tbsp soy sauce", ...], "recipeInstructions": ["step text", ...], "stepIngredients": {"1": ["1 cup jasmine rice", ...]}, "tool": ["chef's knife", ...], "url": "https://...", "nutrition": {"calories": "407 kcal", "fatContent": "15 g", "carbohydrateContent": "37 g", "proteinContent": "30 g", "fiberContent": "4 g", "sodiumContent": "221 mg", "sugarContent": "5 g"}}
 
-Rules: recipeIngredient is the full ingredient list, one entry per ingredient, quantity first, then unit, then the name as written ("1 ½ lb chicken breasts, boneless skinless"; no quantity for to-taste or pantry items). recipeInstructions is every step in order without its number, text verbatim, no headings. stepIngredients maps the 1-based step number to the ingredient lines used in that step with the amount used there: if the document lists ingredients under each step (indented or italic lines below the step text), copy those exactly; otherwise work them out from the step text, splitting an ingredient across steps when the recipe does. Every ingredient appears in at least one step. tool is the document's equipment list if it has one, else the equipment the steps need. "Makes 6 meals" means recipeYield "6 servings". Omit nutrition keys the document does not state; values are per serving. Ignore prices, ratings, ads, author notes and site chrome. If there is more than one recipe, return only the first."""
+Rules: recipeIngredient is the full ingredient list, one entry per ingredient, quantity first, then unit, then the name as written ("1 ½ lb chicken breasts, boneless skinless"; no quantity for to-taste or pantry items). recipeInstructions is every step in order without its number, text verbatim, no headings. stepIngredients maps the 1-based step number to the ingredient lines used in that step with the amount used there: if the document lists ingredients under each step (indented or italic lines below the step text), copy those exactly; otherwise work them out from the step text, splitting an ingredient across steps when the recipe does. Every ingredient appears in at least one step. tool is the document's equipment list if it has one, else the equipment the steps need. "Makes 6 meals" means recipeYield "6 servings". url is the recipe's web address if the document prints one (print pages put it in the header or footer); omit it otherwise. Omit nutrition keys the document does not state; values are per serving. Ignore prices, ratings, ads, author notes and site chrome. If there is more than one recipe, return only the first."""
 
 
 def sniff(data: bytes) -> str:
@@ -303,22 +303,35 @@ def pdf_photo(data: bytes) -> bytes | None:
 def import_document(data: bytes | str, media_type: str, source: str, dest: Path, rid: int) -> dict:
     """One Claude call on the file, then the same save path as a URL import. The photo comes out of
     the PDF when it has one. Needs ANTHROPIC_API_KEY."""
-    r = document_to_mealime(from_document(data, media_type), rid, source)
+    ld = from_document(data, media_type)
+    text = data if isinstance(data, str) else data.decode("utf-8", "replace") if media_type in ("auto", "text/plain") else ""
+    link = _link_in(str(ld.get("url") or "")) or _link_in(text)  # the page's printed address, or the link in a pasted note
+    r = document_to_mealime(ld, rid, link or source)
     stem = f"{r['slug']}-{rid}"
     (dest / "json").mkdir(parents=True, exist_ok=True)
     (dest / "images").mkdir(exist_ok=True)
     image = None
-    if isinstance(data, bytes) and data.startswith(b"%PDF"):
-        photo = (pdf_photo(data), ".jpg") if pdf_photo(data) else None
-    else:
-        text = data if isinstance(data, str) else data.decode("utf-8", "replace") if media_type in ("auto", "text/plain") else ""
-        photo = _photo_from_link(text) if text else None
+    photo = (pdf_photo(data), ".jpg") if isinstance(data, bytes) and data.startswith(b"%PDF") and pdf_photo(data) else None
+    photo = photo or (_photo_from_url(link) if link else None)
     if photo:
         (dest / "images" / (stem + photo[1])).write_bytes(photo[0])
         image = f"images/{stem}{photo[1]}"
     r["_image"] = image
-    _save(r, dest, source, image)
+    _save(r, dest, r["source_url"], image)
     return r
+
+
+def origin_of(r: dict) -> tuple[str, str | None]:
+    """Label and link for where a recipe came from: the Mealime export, a URL import (site host), or a
+    document import, whose source_url is only the Shortcut's file/note name unless the page printed its address."""
+    s = r.get("source_url") or ""
+    if r["id"] < 1000000:
+        return "Mealime", f"https://r.mealime.com/{r['id']}"
+    if s.startswith("http"):
+        return (urlparse(s).hostname or s).removeprefix("www."), s
+    if s.endswith("Printer Friendly"):  # WPRM print pages saved to PDF; Tim says these are all Zach Coen's
+        return "Zach Coen", None
+    return "File", None
 
 
 def _save(r: dict, dest: Path, url: str, image: str | None):
@@ -339,13 +352,15 @@ def _download_image(url: str) -> tuple[bytes, str]:
     return img.read(MAX_BYTES), ext if ext in (".jpg", ".jpeg", ".png", ".webp") else ".jpg"
 
 
-def _photo_from_link(text: str) -> tuple[bytes, str] | None:
-    """A pasted note usually carries its source link: take that page's schema.org image if the site answers."""
+def _link_in(text: str) -> str | None:
     m = re.search(r"https?://[^\s<>\"']+", text)
-    if not m:
-        return None
+    return m.group().rstrip(".,)") if m else None
+
+
+def _photo_from_url(page: str) -> tuple[bytes, str] | None:
+    """A pasted note usually carries its source link: take that page's schema.org image if the site answers."""
     try:
-        url = image_of(find_recipe(fetch(m.group().rstrip(".,)"))))
+        url = image_of(find_recipe(fetch(page)))
         return _download_image(url) if url else None
     except Exception:  # ponytail: 403s, dead links and non-recipe pages just mean no photo
         return None
@@ -407,7 +422,11 @@ def _selfcheck():
             raise AssertionError(bad)
         except ValueError:
             pass
-    assert _photo_from_link("no links here") is None and _photo_from_link("Link: https://127.0.0.1:9/x") is None
+    assert _link_in("no links here") is None and _link_in("Link: https://x.test/r.") == "https://x.test/r" and _photo_from_url("https://127.0.0.1:9/x") is None
+    assert origin_of({"id": 9885}) == ("Mealime", "https://r.mealime.com/9885")
+    assert origin_of({"id": 1000001, "source_url": "https://www.hellofresh.com/recipes/x"}) == ("hellofresh.com", "https://www.hellofresh.com/recipes/x")
+    assert origin_of({"id": 1000002, "source_url": "Big Mac Bowl - Printer Friendly"}) == ("Zach Coen", None)
+    assert origin_of({"id": 1000003, "source_url": "baked-ziti"}) == ("File", None)
     print("ok: importer fixture")
 
 
