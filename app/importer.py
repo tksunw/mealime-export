@@ -192,7 +192,7 @@ def to_mealime(ld: dict, rid: int, url: str) -> dict:
     }
 
 
-def _claude(content, max_tokens: int = 4000) -> dict:
+def _claude(content, max_tokens: int = 16000) -> dict:
     """One Messages call; the JSON object in its reply. content: prompt string or content blocks."""
     key = os.environ.get("ANTHROPIC_API_KEY")
     if not key:
@@ -275,10 +275,10 @@ def from_document(data: bytes | str, media_type: str) -> dict:
         media_type = sniff(data)
     if media_type == "text/plain":
         text = data.decode("utf-8", "replace") if isinstance(data, bytes) else data
-        return _claude(DOC_PROMPT + "\n\nRecipe:\n" + text, 6000)
+        return _claude(DOC_PROMPT + "\n\nRecipe:\n" + text)
     block = "document" if media_type == "application/pdf" else "image"
     return _claude([{"type": block, "source": {"type": "base64", "media_type": media_type, "data": base64.b64encode(data).decode()}},
-                    {"type": "text", "text": DOC_PROMPT}], 6000)
+                    {"type": "text", "text": DOC_PROMPT}])
 
 
 def document_to_mealime(ld: dict, rid: int, source: str) -> dict:
