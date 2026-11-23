@@ -22,7 +22,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 sys.path.insert(0, str(Path(__file__).parent))
-from grocery import merge  # noqa: E402
+from grocery import merge, scale  # noqa: E402
 from importer import enrich_saved, import_document, import_url, origin_of  # noqa: E402
 from ticktick import add_tasks  # noqa: E402
 from ingredients import normalize_name  # noqa: E402
@@ -109,11 +109,13 @@ class Handler(SimpleHTTPRequestHandler):
             ids = [int(x) for x in self.path.partition("ids=")[2].split("&")[0].split(",") if x.isdigit()]
             with STATE_LOCK:
                 state = json.loads(STATE.read_text()) if STATE.is_file() else {}
-            rs = [RECIPES[i] for i in ids if i in RECIPES]
+            servings = state.get("servings") or {}  # {recipe id: chosen serving count}
+            rs = [scale(RECIPES[i], servings.get(str(i))) for i in ids if i in RECIPES]
             return self.send_json(merge(rs, CATEGORIES, state.get("overrides")))
         if path.startswith("/api/recipes/"):
             r = RECIPES.get(int(path.rsplit("/", 1)[1])) if path.rsplit("/", 1)[1].isdigit() else None
-            return self.send_json(r) if r else self.send_error(HTTPStatus.NOT_FOUND)
+            n = self.path.partition("servings=")[2].split("&")[0]
+            return self.send_json(scale(r, int(n)) if n.isdigit() else r) if r else self.send_error(HTTPStatus.NOT_FOUND)
         if path.startswith("/images/"):
             p = EXPORT / "images" / Path(path).name
             return self.send_file(p if p.is_file() else IMPORTED / "images" / Path(path).name, cache=86400 * 30)

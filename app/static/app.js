@@ -4,7 +4,8 @@ const filter = document.getElementById("filter");
 const MAX_PLAN = 5;
 let index = null;
 // plan: recipe ids; history: [{ids, created}]; checked/overrides/locations keyed by ingredient key; places: location names
-let state = { plan: [], history: [], checked: {}, overrides: {}, locations: {}, places: ["Refrigerator", "Freezer", "Pantry", "Spice cabinet", "Counter"], byLocation: false, staples: [], stapleChecks: [] };
+// servings: {recipe id: chosen serving count}, the server rescales quantities (recipe route and grocery) from it
+let state = { plan: [], history: [], checked: {}, overrides: {}, locations: {}, places: ["Refrigerator", "Freezer", "Pantry", "Spice cabinet", "Counter"], byLocation: false, staples: [], stapleChecks: [], servings: {} };
 let stapleChecks = new Set(); // mirror of state.stapleChecks, rebuilt by loadState, written by saveChecks
 let aisleOrder = null;
 const cache = {};
@@ -16,8 +17,15 @@ async function getIndex() {
   return index;
 }
 async function getRecipe(id) {
-  if (!cache[id]) cache[id] = await (await fetch(`/api/recipes/${id}`)).json();
-  return cache[id];
+  const n = state.servings[id] || "";
+  if (!cache[`${id}@${n}`]) cache[`${id}@${n}`] = await (await fetch(`/api/recipes/${id}?servings=${n}`)).json();
+  return cache[`${id}@${n}`];
+}
+function setServings(id, n) {
+  if (n < 1) return;
+  state.servings[id] = n;
+  saveState();
+  route();
 }
 async function loadState() {
   try { state = { ...state, ...(await (await fetch("/api/state")).json()) }; } catch (e) { /* offline: keep defaults */ }
@@ -228,7 +236,10 @@ function recipeHTML(r) {
   <article class="recipe">
     <img class="hero" src="${esc(r.image)}" alt="">
     <h1>${esc(r.name)}</h1>
-    <p class="meta">${r.cooking_minutes} min · ${r.serving_count} servings · ${r.origin_url ? `<a href="${esc(r.origin_url)}" target="_blank" rel="noopener">${esc(r.origin)}</a>` : esc(r.origin)}
+    <p class="meta">${r.cooking_minutes} min ·
+      <span class="servings"><button class="btn ghost" onclick="setServings(${r.id},${r.serving_count - 1})" aria-label="Fewer servings">−</button>
+        ${r.serving_count} servings${r.servings_base ? ` <small>(recipe makes ${r.servings_base})</small>` : ""}
+        <button class="btn ghost" onclick="setServings(${r.id},${r.serving_count + 1})" aria-label="More servings">+</button></span> · ${r.origin_url ? `<a href="${esc(r.origin_url)}" target="_blank" rel="noopener">${esc(r.origin)}</a>` : esc(r.origin)}
       <a class="btn" href="#/cook/${r.id}/1">Cook</a>
       <button class="btn ghost" onclick="togglePlan(${r.id})" ${!inPlan(r.id) && state.plan.length >= MAX_PLAN ? "disabled" : ""}>
         ${inPlan(r.id) ? "✓ In plan" : "+ Plan"}</button></p>

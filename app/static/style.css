@@ -138,6 +138,8 @@ body.cooking main { max-width: none; padding: 0; }
 .card .pick:disabled { opacity: .35; cursor: default; }
 .card.picked { outline: 2px solid var(--accent); }
 .card-body { display: block; }
+.servings .btn.ghost { padding: 0 .6rem; margin: 0 .2rem; line-height: 1.6; }
+.servings small { color: var(--muted); }
 .btn.ghost { background: transparent; color: var(--accent); border: 1px solid var(--accent); font: inherit; font-weight: 600; font-size: .95rem; cursor: pointer; }
 .btn:disabled { opacity: .4; cursor: default; }
 

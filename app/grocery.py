@@ -26,6 +26,38 @@ def fmt_q(amount: Fraction, unit: str) -> str:
     return f"{fmt_amount(amount)} {unit}".strip()
 
 
+def scale(r, servings):
+    """Copy of recipe r for `servings` people: list quantities, per-step lines and serving_count rescaled.
+    Volume and mass round to the nearest ⅛, counts and packages to the nearest ¼; quantities the parser
+    cannot read ("1 splash") stay as written. Step prose is left alone, same as Allrecipes."""
+    base = r.get("serving_count")
+    if not base or not servings or servings == base:
+        return r
+    f = Fraction(servings) / base
+
+    def mul(q):
+        step = Fraction(1, 8) if q.family in ("volume", "mass") else Fraction(1, 4)
+        return max(step, Fraction(round(q.amount * f / step)) * step)
+
+    def line(s):
+        q, rest = parse_line(s)
+        return f"{fmt_q(mul(q), q.unit)} {rest}".strip() if q else s
+
+    def qty(s):
+        try:
+            q = parse_quantity(s)
+        except ValueError:
+            return s
+        return fmt_q(mul(q), q.unit) if q else s
+
+    out = {**r, "serving_count": servings, "servings_base": base,
+           "line_items": [{**li, "quantity": qty(li.get("quantity"))} for li in r["line_items"]],
+           "instructions": [{**st, "secondary_message": "\n".join(line(l) for l in (st.get("secondary_message") or "").splitlines())} for st in r["instructions"]]}
+    for st in out["instructions"]:
+        st["uses"] = [l for l in st["secondary_message"].splitlines() if l.strip()]
+    return out
+
+
 def merge(recipes, categories, overrides=None):
     """recipes: list of Mealime recipe dicts. categories: {"order": [...], "ingredients": {key: cat}}.
     overrides: {key: cat} from the user, wins over the table.
@@ -108,6 +140,12 @@ def _selfcheck(export_dir):
     assert by["chicken breast"]["approx"] == []  # only pantry items get step totals
     assert by["yellow onion"]["category"] == "Frozen"
     assert len(by["chicken breast"]["sources"]) == 2
+    s = scale({**a, "serving_count": 4, "line_items": a["line_items"] + [{"quantity": "1 splash", "ingredient_name": "wine"}, {"quantity": "1 ½ tsp", "ingredient_name": "cumin"}]}, 6)
+    assert s["serving_count"] == 6 and s["servings_base"] == 4
+    assert [li["quantity"] for li in s["line_items"]] == ["1 ½ lb", "3 tbsp", "3 cloves", "", "1 splash", "2 ¼ tsp"], [li["quantity"] for li in s["line_items"]]
+    assert s["instructions"][0]["uses"] == ["¾ tsp salt", "1 ½ lb chicken breasts"] and s["instructions"][1]["secondary_message"] == "⅜ tsp salt"
+    assert scale(a, 6) is a and scale({**a, "serving_count": 4}, 4)["line_items"] is a["line_items"]  # no base or unchanged: untouched
+    assert scale({**a, "serving_count": 4}, 1)["line_items"][2]["quantity"] == "½ clove"  # 2/4 cloves rounds to the ¼ grid; never 0
     assert [i["category"] for i in g["items"]] == sorted(
         (i["category"] for i in g["items"]), key=g["order"].index)
     # whole export merges without error
