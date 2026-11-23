@@ -56,6 +56,26 @@ def load_recipes():
     return recipes
 
 
+def plan_markdown(rs, servings):
+    """The plan as one markdown document for the DinnerParty skill: each recipe scaled, with its per-step
+    ingredient lines and cookware, so the skill can build prep and timing without re-parsing anything."""
+    out = ["# Recipes plan", "", *[f"- {r['name']}" for r in rs]]
+    for r in rs:
+        if r.get("serving_count"):
+            serv = f"{r['serving_count']} servings" + (f" (scaled from {r['servings_base']})" if r.get("servings_base") else "")
+        else:
+            serv = f"servings not stated, quantities at {servings.get(str(r['id']), 1)}x"
+        out += ["", f"## {r['name']}", "", f"{r.get('cooking_minutes') or '?'} minutes, {serv}. Source: {r.get('origin_url') or r['origin']}", "", "### Ingredients", ""]
+        out += [("- " + f"{(li.get('quantity') or '').strip()} {li['ingredient_name']}".strip()) for li in r["line_items"]]
+        out += ["", "### Steps", ""]
+        for i, st in enumerate(r["instructions"], 1):
+            out.append(f"{i}. {(st.get('primary_message') or '').strip()}")
+            out += [f"   - {u}" for u in st["uses"]]
+        if r["cookwares"]:
+            out += ["", "### Cookware", "", *[f"- {c['name']}" for c in r["cookwares"]]]
+    return "\n".join(out) + "\n"
+
+
 def rebuild():
     """(Re)load everything into module globals. Called at start and after an import."""
     global RECIPES, INDEX, INGREDIENTS
@@ -105,6 +125,12 @@ class Handler(SimpleHTTPRequestHandler):
             last = key.rsplit(" ", 1)[-1]  # ponytail: "2% milk" -> any "... milk" key; dropdown fixes the rest
             cat = cats.get(key) or next((c for k, c in cats.items() if k.rsplit(" ", 1)[-1] == last), "Other")
             return self.send_json({"order": CATEGORIES["order"] + ["Other"], "category": cat})
+        if path == "/api/plan.md":  # the saved plan, scaled, as markdown for the DinnerParty skill
+            with STATE_LOCK:
+                state = json.loads(STATE.read_text()) if STATE.is_file() else {}
+            servings = state.get("servings") or {}
+            rs = [scale(RECIPES[i], servings.get(str(i))) for i in state.get("plan", []) if i in RECIPES]
+            return self.send_bytes(plan_markdown(rs, servings).encode(), "text/markdown; charset=utf-8")
         if path == "/api/grocery":
             ids = [int(x) for x in self.path.partition("ids=")[2].split("&")[0].split(",") if x.isdigit()]
             with STATE_LOCK:

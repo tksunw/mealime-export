@@ -314,6 +314,7 @@ async function renderPlan(activeId) {
   <nav class="tabs">
     ${recipes.map((r) => `<a class="${r === active ? "active" : ""}" href="#/plan/${r.id}">${esc(r.name)}</a>`).join("")}
     <a class="grocery-tab ${grocery ? "active" : ""}" href="#/plan/grocery">Grocery</a>
+    <a class="clear" href="/api/plan.md" target="_blank" title="The plan as markdown, for the DinnerParty skill">DinnerParty</a>
     <button class="clear" onclick="clearPlan()">Clear plan</button>
   </nav>
   ${body}
