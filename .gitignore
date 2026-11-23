@@ -6,3 +6,4 @@ failed.txt
 .DS_Store
 ticktick.json
 .env
+__pycache__/
