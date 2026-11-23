@@ -150,7 +150,7 @@ def servings_of(ld) -> int | None:
 def image_of(ld) -> str | None:
     i = ld.get("image")
     if isinstance(i, list):
-        i = i[0] if i else None
+        i = i[-1] if i else None  # ponytail: WPRM lists sizes ascending, full size last; first is a 225px thumb
     if isinstance(i, dict):
         i = i.get("url") or i.get("contentUrl")
     return i if isinstance(i, str) and i.startswith("http") else None
