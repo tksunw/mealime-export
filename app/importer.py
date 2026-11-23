@@ -112,6 +112,8 @@ def split_ingredient(text: str):
         s = re.sub(rf"(?<![\d/]){re.escape(a)}(?![\d/])", b, s)
     s = re.sub(r"^\d*\.\d+", lambda m: dec_to_frac(m.group(0)), s).strip()  # "0.25" -> "¼", "1.5" -> "1 ½", "0.33333334326744" -> "⅓"
     s = re.sub(r"^(\d+) ?([½¼¾⅓⅔⅛])", r"\1 \2", s)  # "1½" -> "1 ½"
+    s = re.sub(r"^(\d+) units? ", r"\1 ", s)  # HelloFresh "1 unit Lemon"
+    s = re.sub(r"^[a-z]+ \((?:tsp|tbsp)\) ", "", s, flags=re.I)  # HelloFresh pantry "teaspoon (tsp) Salt"
     s = re.sub(r"\((\d+(?:\.\d+)?)[ -]?(?:ounces?|oz\.?)\)", r"(\1 oz)", s, flags=re.I)  # "(28 ounce) can" -> "(28 oz) can", the parser's package form
     s = re.sub(r"^([\d½¼¾⅓⅔⅛]+(?: [½¼¾⅓⅔⅛])?)\s*(?:-|–|to)\s*[\d½¼¾⅓⅔⅛]+(?: [½¼¾⅓⅔⅛])?", r"\1", s)  # "2-3 cloves", "½ to ⅔ cup" -> low end
     m = re.match(r"^([\d½¼¾⅓⅔⅛][\d½¼¾⅓⅔⅛ ./]*?)\s+([A-Za-z.]+(?: oz\.?)?)(?=\s|$)", s)
